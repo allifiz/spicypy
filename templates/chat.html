@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="theme-color" content="#111218" />
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <title>SpicyPy Chat</title>
+  <style>
+    *{box-sizing:border-box} html,body{margin:0;height:100%;background:#0f1015;color:#f5f6fa;font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+    body{overflow:hidden}.app{height:100dvh;display:grid;grid-template-columns:300px 1fr}.sidebar{background:#15161d;border-right:1px solid #272934;display:flex;flex-direction:column;min-width:0}.side-head{padding:16px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #272934}.brand{font-weight:800}.home-btn,.icon-btn{border:0;background:#232631;color:#fff;border-radius:10px;padding:9px 11px;cursor:pointer}.conversation-list{overflow:auto;padding:8px}.convo{padding:11px;border-radius:12px;cursor:pointer}.convo:hover{background:#21232c}.convo-name{font-weight:650;font-size:14px}.convo-preview{font-size:12px;color:#9da3b4;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .chat{display:flex;flex-direction:column;min-width:0;min-height:0}.chat-top{height:64px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 18px;border-bottom:1px solid #242731;background:#121319}.char-info{display:flex;align-items:center;gap:11px;min-width:0}.avatar{width:40px;height:40px;border-radius:50%;object-fit:cover;background:#292b35}.char-meta{min-width:0}.char-name{font-weight:750;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.char-sub{font-size:12px;color:#8f96a7}.top-actions{display:flex;gap:8px}.messages{flex:1;overflow:auto;padding:24px max(20px,calc((100% - 850px)/2));display:flex;flex-direction:column;gap:18px;min-height:0}.empty{margin:auto;text-align:center;color:#8e95a6;max-width:360px}.msg{display:flex;gap:10px;max-width:780px}.msg.user{align-self:flex-end;flex-direction:row-reverse}.bubble{background:#1b1d25;border:1px solid #2b2e39;border-radius:16px;padding:12px 14px;line-height:1.55;font-size:15px;white-space:pre-wrap;word-break:break-word}.msg.user .bubble{background:#6c4cff;border-color:#6c4cff}.msg.error .bubble{color:#ffb4b4;border-color:#633}.composer-wrap{flex:none;padding:12px max(14px,calc((100% - 900px)/2)) max(12px,env(safe-area-inset-bottom));background:linear-gradient(180deg,rgba(15,16,21,0),#0f1015 24%)}.composer{display:flex;align-items:flex-end;gap:8px;border:1px solid #30333e;background:#171820;border-radius:18px;padding:8px;box-shadow:0 8px 30px rgba(0,0,0,.28)}.composer textarea{flex:1;resize:none;max-height:150px;min-height:42px;border:0;outline:0;background:transparent;color:#fff;padding:10px 8px;font:inherit}.composer button{width:42px;height:42px;border:0;border-radius:12px;background:#262934;color:#fff;font-weight:800;font-size:17px;cursor:pointer;flex:none}.composer .send{background:#7357ff}.composer button:disabled{opacity:.5}.mobile-menu{display:none}.drawer-backdrop{display:none}
+    @media(max-width:768px){.app{display:block}.sidebar{position:fixed;inset:0 14% 0 0;z-index:50;transform:translateX(-105%);transition:.22s ease;box-shadow:20px 0 50px rgba(0,0,0,.45)}.sidebar.open{transform:none}.drawer-backdrop.show{display:block;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:40}.mobile-menu{display:inline-grid;place-items:center}.chat{height:100dvh}.chat-top{height:58px;padding:0 10px}.avatar{width:36px;height:36px}.char-sub{display:none}.top-actions .hide-mobile{display:none}.messages{padding:16px 12px}.msg{max-width:92%}.bubble{font-size:14px}.composer-wrap{padding:8px 8px max(8px,env(safe-area-inset-bottom))}.composer{border-radius:16px}.composer textarea{font-size:16px}.composer button{width:40px;height:40px}.home-btn{padding:8px 10px}}
+  </style>
+</head>
+<body>
+<div class="drawer-backdrop" id="backdrop"></div>
+<div class="app">
+  <aside class="sidebar" id="sidebar">
+    <div class="side-head"><div class="brand">🌶️ SpicyPy</div><button class="home-btn" onclick="location.href='/'">Home</button></div>
+    <div class="conversation-list" id="conversationList"><div class="convo-preview" style="padding:12px">Memuat chat...</div></div>
+  </aside>
+  <main class="chat">
+    <header class="chat-top">
+      <div class="char-info"><button class="icon-btn mobile-menu" id="menuBtn">☰</button><img id="charAvatar" class="avatar" alt="avatar"><div class="char-meta"><div id="charName" class="char-name">Pilih karakter</div><div id="charSub" class="char-sub">Mulai dari Home</div></div></div>
+      <div class="top-actions"><button class="icon-btn hide-mobile" onclick="location.href='/'">⌂</button><button class="icon-btn" id="settingsBtn">⚙</button></div>
+    </header>
+    <section class="messages" id="messages"><div class="empty">Pilih karakter dari Home untuk memulai percakapan.</div></section>
+    <div class="composer-wrap"><div class="composer"><button id="starBtn" title="Aksi / narasi">*</button><textarea id="messageInput" rows="1" placeholder="Ketik pesan..."></textarea><button class="send" id="sendBtn">➤</button></div></div>
+  </main>
+</div>
+<script>
+let currentConvo=null;
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
+function formatMessage(s){return esc(s).replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>').replace(/\*([^*]+)\*/g,'<em>$1</em>')}
+function avatarUrl(c){return c?.avatar_url?'/api/avatar?url='+encodeURIComponent(c.avatar_url):''}
+function setCharacter(c){const id=c?.character_id||c?.id;if(!id)return;currentConvo={id:null,character_id:id,character:c};$('charName').textContent=c.name||'Character';$('charSub').textContent=c.creator_username?'@'+c.creator_username:'SpicyChat character';$('charAvatar').src=avatarUrl(c);$('messages').innerHTML='<div class="empty">Mulai chat dengan '+esc(c.name||'karakter')+'.</div>'}
+function addMessage(text,type='bot'){const empty=$('messages').querySelector('.empty');if(empty)empty.remove();const row=document.createElement('div');row.className='msg '+type;row.innerHTML='<div class="bubble">'+formatMessage(text)+'</div>';$('messages').appendChild(row);$('messages').scrollTop=$('messages').scrollHeight;return row}
+async function loadConversations(){try{const r=await fetch('/api/conversations');const d=await r.json();const list=Array.isArray(d)?d:(d.conversations||d.data||[]);$('conversationList').innerHTML='';if(!list.length){$('conversationList').innerHTML='<div class="convo-preview" style="padding:12px">Belum ada chat.</div>';return}list.forEach(c=>{const el=document.createElement('div');el.className='convo';const ch=c.character||{};el.innerHTML='<div class="convo-name">'+esc(ch.name||c.name||'Conversation')+'</div><div class="convo-preview">'+esc(c.last_message?.content||c.last_message||'Buka percakapan')+'</div>';el.onclick=()=>{currentConvo={id:c.id||c.conversation_id,character_id:c.character_id||ch.id||ch.character_id,character:ch};$('charName').textContent=ch.name||c.name||'Conversation';$('charAvatar').src=avatarUrl(ch);$('messages').innerHTML='<div class="empty">Percakapan dipilih. Kirim pesan untuk melanjutkan.</div>';closeDrawer()};$('conversationList').appendChild(el)})}catch(e){$('conversationList').innerHTML='<div class="convo-preview" style="padding:12px">Gagal memuat riwayat.</div>'}}
+async function sendMessage(){if(!currentConvo){addMessage('Pilih karakter dari Home terlebih dahulu.','error');return}const input=$('messageInput');const text=input.value.trim();if(!text)return;input.value='';autoGrow();addMessage(text,'user');const loading=addMessage('Mengetik...','bot');$('sendBtn').disabled=true;try{const body={message:text,character_id:currentConvo.character_id};if(currentConvo.id)body.conversation_id=currentConvo.id;const r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const d=await r.json();if(!r.ok||d.error)throw new Error(d.error||'HTTP '+r.status);currentConvo.id=d.conversation_id||currentConvo.id;loading.querySelector('.bubble').innerHTML=formatMessage(d.content||'')}catch(e){loading.classList.add('error');loading.querySelector('.bubble').textContent='Error: '+e.message}finally{$('sendBtn').disabled=false;$('messages').scrollTop=$('messages').scrollHeight}}
+function autoGrow(){const t=$('messageInput');t.style.height='42px';t.style.height=Math.min(t.scrollHeight,150)+'px'}
+function closeDrawer(){$('sidebar').classList.remove('open');$('backdrop').classList.remove('show')}
+$('menuBtn').onclick=()=>{$('sidebar').classList.add('open');$('backdrop').classList.add('show')};$('backdrop').onclick=closeDrawer;
+$('starBtn').onclick=()=>{const t=$('messageInput');const a=t.selectionStart,b=t.selectionEnd;if(a!==b){t.setRangeText('*'+t.value.slice(a,b)+'*',a,b,'end')}else{t.value=t.value.startsWith('*')&&t.value.endsWith('*')?t.value.slice(1,-1):'*'+t.value+'*'}t.focus();autoGrow()};
+$('sendBtn').onclick=sendMessage;$('messageInput').addEventListener('input',autoGrow);$('messageInput').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMessage()}});
+$('settingsBtn').onclick=()=>alert('Pengaturan model tetap tersedia dari API settings; UI panel akan memakai versi baru berikutnya.');
+try{const raw=sessionStorage.getItem('pendingCharacter');if(raw){sessionStorage.removeItem('pendingCharacter');setCharacter(JSON.parse(raw))}}catch(e){}
+loadConversations();
+if('serviceWorker'in navigator)navigator.serviceWorker.register('/service-worker.js').catch(()=>{});
+</script>
+</body>
+</html>
