@@ -23,6 +23,186 @@ DEFAULT_SETTINGS = {
     "top_p": 0.95
 }
 
+MOBILE_UI_PATCH = r"""
+<style id="mobile-ui-patch">
+  :root {
+    --app-height: 100dvh;
+    --mobile-header-height: 56px;
+  }
+
+  html, body {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  @media (max-width: 768px) {
+    html,
+    body {
+      height: var(--app-height, 100dvh) !important;
+      min-height: var(--app-height, 100dvh) !important;
+      overflow: hidden !important;
+      overscroll-behavior: none;
+    }
+
+    .header {
+      min-height: var(--mobile-header-height);
+      padding-top: max(10px, env(safe-area-inset-top));
+      flex-shrink: 0;
+      position: relative;
+      z-index: 200;
+    }
+
+    .main-container {
+      flex: 1 !important;
+      height: auto !important;
+      min-height: 0 !important;
+      overflow: hidden !important;
+    }
+
+    .sidebar {
+      top: var(--mobile-header-height) !important;
+      bottom: 0 !important;
+      height: auto !important;
+      max-height: calc(var(--app-height, 100dvh) - var(--mobile-header-height));
+      z-index: 150 !important;
+      overflow: hidden;
+    }
+
+    .sidebar-tabs {
+      position: sticky;
+      top: 0;
+      z-index: 3;
+    }
+
+    .sidebar-content,
+    .sidebar-content.active {
+      min-height: 0;
+      max-height: 100%;
+    }
+
+    .chat-container {
+      width: 100%;
+      height: 100% !important;
+      min-width: 0;
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    .chat-header {
+      min-height: 48px;
+      gap: 8px;
+    }
+
+    .chat-info {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .messages {
+      flex: 1 1 auto !important;
+      min-height: 0 !important;
+      padding-bottom: 16px;
+      overscroll-behavior: contain;
+    }
+
+    .input-container {
+      width: 100%;
+      min-width: 0;
+      align-items: center;
+      gap: 6px !important;
+      padding: 8px 8px max(8px, env(safe-area-inset-bottom)) !important;
+      flex-wrap: nowrap;
+      position: relative;
+      z-index: 5;
+    }
+
+    .input-container input {
+      min-width: 0 !important;
+      width: 0;
+      flex: 1 1 auto !important;
+      font-size: 16px !important;
+      padding: 10px 12px !important;
+    }
+
+    .input-container button {
+      flex: 0 0 auto;
+      white-space: nowrap;
+      padding: 10px 12px !important;
+    }
+
+    .input-container button#italicBtn {
+      padding: 10px !important;
+    }
+
+    .character-grid {
+      align-content: start;
+    }
+
+    .modal {
+      padding: max(12px, env(safe-area-inset-top)) 12px max(12px, env(safe-area-inset-bottom));
+    }
+
+    .modal-content {
+      width: 100% !important;
+      max-height: calc(var(--app-height, 100dvh) - 24px) !important;
+      padding: 18px !important;
+    }
+  }
+
+  @media (max-width: 380px) {
+    .header {
+      padding-left: 8px;
+      padding-right: 8px;
+    }
+
+    .header h1 {
+      font-size: 15px !important;
+    }
+
+    .input-container button {
+      padding-left: 10px !important;
+      padding-right: 10px !important;
+    }
+
+    .settings-btn {
+      padding: 8px 10px !important;
+    }
+  }
+</style>
+<script>
+  (function () {
+    function syncViewportHeight() {
+      var height = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+      document.documentElement.style.setProperty('--app-height', height + 'px');
+    }
+
+    syncViewportHeight();
+    window.addEventListener('resize', syncViewportHeight);
+    window.addEventListener('orientationchange', syncViewportHeight);
+
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener('resize', syncViewportHeight);
+      window.visualViewport.addEventListener('scroll', syncViewportHeight);
+    }
+
+    document.addEventListener('DOMContentLoaded', function () {
+      var input = document.getElementById('messageInput');
+      if (!input) return;
+
+      input.addEventListener('focus', function () {
+        setTimeout(function () {
+          syncViewportHeight();
+          var messages = document.getElementById('messages');
+          if (messages) messages.scrollTop = messages.scrollHeight;
+        }, 120);
+      });
+    });
+  })();
+</script>
+"""
+
 def get_access_token(refresh_token: str) -> str:
     data = f"grant_type=refresh_token&refresh_token={urllib.parse.quote(refresh_token)}&client_id={CLIENT_ID}"
     req = urllib.request.Request(
@@ -153,7 +333,9 @@ def send_message_api(message: str, access_token: str, char_id: str, conv_id: str
 def index():
     if 'access_token' not in session:
         return render_template('login.html')
-    return render_template('index.html')
+
+    html = render_template('index.html')
+    return html.replace('</head>', MOBILE_UI_PATCH + '\n</head>')
 
 @app.route('/api/login', methods=['POST'])
 def api_login():
