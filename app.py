@@ -2,6 +2,7 @@ from flask import Flask, render_template, request, jsonify, session, redirect, s
 import urllib.request
 import urllib.error
 import urllib.parse
+import secrets
 import json
 import os
 
@@ -33,6 +34,50 @@ INDONESIAN_DIRECTOR_COMMAND = (
     "/cmd Reply ONLY in casual Indonesian. Match the user's slang, tone, and level of formality. "
     "Keep all dialogue, narration, actions, and descriptions in Indonesian. Never switch to English unless the user explicitly asks."
 )
+
+
+def private_password():
+    return str(os.environ.get("PRIVATE_APP_PASSWORD") or "").strip()
+
+
+def is_private_route_exempt():
+    return (
+        request.path in {"/private-login", "/robots.txt", "/manifest.webmanifest", "/service-worker.js"}
+        or request.path.startswith("/static/")
+    )
+
+
+def safe_next_url(value):
+    value = str(value or "").strip()
+    if value.startswith("/") and not value.startswith("//"):
+        return value
+    return "/"
+
+
+@app.before_request
+def private_access_gate():
+    if is_private_route_exempt():
+        return None
+
+    if not private_password():
+        if request.path.startswith("/api/"):
+            return jsonify({"error": "PRIVATE_APP_PASSWORD belum dikonfigurasi"}), 503
+        return render_template("login.html", setup_missing=True), 503
+
+    if not session.get("private_access"):
+        if request.path.startswith("/api/"):
+            return jsonify({"error": "Private access required"}), 401
+        next_url = urllib.parse.quote(request.full_path.rstrip("?"), safe="/")
+        return redirect(f"/private-login?next={next_url}")
+
+    return None
+
+
+@app.after_request
+def private_response_headers(response):
+    response.headers["X-Robots-Tag"] = "noindex, nofollow, noarchive, nosnippet"
+    response.headers["Referrer-Policy"] = "same-origin"
+    return response
 
 
 def api_headers(access_token=None):
@@ -75,12 +120,12 @@ def get_access_token(refresh_token):
 
 
 def ensure_spicy_session():
-    """Auto-login untuk deployment personal menggunakan refresh token server-side."""
     if session.get("access_token"):
         return True
 
     refresh_token = str(os.environ.get("SPICYCHAT_REFRESH_TOKEN") or "").strip()
     if not refresh_token:
+        session["auth_error"] = "SPICYCHAT_REFRESH_TOKEN belum dikonfigurasi"
         return False
 
     try:
@@ -131,6 +176,7 @@ def search_characters_typesense(query="*", nsfw_mode="all", page=1, per_page=24,
         "popular": "_text_match(buckets: 3):desc,num_messages:desc",
         "rating": "_text_match(buckets: 3):desc,rating_score:desc,num_messages:desc",
     }
+
     payload = {
         "searches": [{
             "collection": "public_characters_alias",
@@ -146,6 +192,7 @@ def search_characters_typesense(query="*", nsfw_mode="all", page=1, per_page=24,
             "page": page,
         }]
     }
+
     req = urllib.request.Request(
         TYPESENSE_URL,
         data=json.dumps(payload).encode("utf-8"),
@@ -189,6 +236,7 @@ def send_message_api(message, access_token, char_id, conv_id, settings):
     }
     if conv_id:
         payload["conversation_id"] = conv_id
+
     headers = api_headers(access_token)
     headers["Content-Type"] = "application/json"
     req = urllib.request.Request(
@@ -214,8 +262,33 @@ def parse_upstream_error(exc):
 
 def page(template):
     if not ensure_spicy_session():
-        return render_template("login.html", auth_error=session.get("auth_error"))
+        return render_template(
+            "login.html",
+            spicy_error=session.get("auth_error"),
+            private_unlocked=True,
+        )
     return render_template(template)
+
+
+@app.route("/private-login", methods=["GET", "POST"])
+def private_login():
+    if not private_password():
+        return render_template("login.html", setup_missing=True), 503
+
+    next_url = safe_next_url(request.args.get("next") or request.form.get("next"))
+    if session.get("private_access"):
+        return redirect(next_url)
+
+    error = None
+    if request.method == "POST":
+        candidate = str(request.form.get("password") or "")
+        if secrets.compare_digest(candidate, private_password()):
+            session.clear()
+            session["private_access"] = True
+            return redirect(next_url)
+        error = "Password salah."
+
+    return render_template("login.html", access_error=error, next_url=next_url)
 
 
 @app.route("/")
@@ -233,6 +306,11 @@ def chat():
     return page("chat.html")
 
 
+@app.route("/robots.txt")
+def robots():
+    return Response("User-agent: *\nDisallow: /\n", mimetype="text/plain")
+
+
 @app.route("/manifest.webmanifest")
 def manifest():
     return send_from_directory(app.static_folder, "manifest.webmanifest", mimetype="application/manifest+json")
@@ -244,21 +322,6 @@ def service_worker():
     response.headers["Service-Worker-Allowed"] = "/"
     response.headers["Cache-Control"] = "no-cache"
     return response
-
-
-@app.route("/api/login", methods=["POST"])
-def api_login():
-    # Fallback lokal/manual. Di Vercel personal, gunakan SPICYCHAT_REFRESH_TOKEN.
-    try:
-        data = request.get_json(silent=True) or {}
-        refresh_token = str(data.get("refresh_token") or "").strip()
-        if not refresh_token:
-            return jsonify({"error": "Token tidak boleh kosong"}), 400
-        session["access_token"] = get_access_token(refresh_token)
-        session["settings"] = DEFAULT_SETTINGS.copy()
-        return jsonify({"success": True})
-    except Exception as exc:
-        return jsonify({"error": str(exc)}), 500
 
 
 @app.route("/api/conversations")
@@ -298,9 +361,11 @@ def api_avatar():
     auth_error = require_api_auth()
     if auth_error:
         return auth_error
+
     raw_url = str(request.args.get("url") or "").strip()
     if not raw_url:
         return "", 404
+
     try:
         if raw_url.startswith("//"):
             url = "https:" + raw_url
@@ -308,6 +373,7 @@ def api_avatar():
             url = raw_url
         else:
             url = urllib.parse.urljoin(AVATAR_CDN_BASE, raw_url.lstrip("/"))
+
         parsed = urllib.parse.urlparse(url)
         host = (parsed.hostname or "").lower()
         allowed = (
@@ -318,6 +384,7 @@ def api_avatar():
         )
         if parsed.scheme not in {"http", "https"} or not allowed:
             return "", 403
+
         req = urllib.request.Request(
             url,
             headers={
@@ -334,7 +401,7 @@ def api_avatar():
             return Response(
                 response.read(),
                 content_type=content_type,
-                headers={"Cache-Control": "public, max-age=86400"},
+                headers={"Cache-Control": "private, max-age=86400"},
             )
     except urllib.error.HTTPError as exc:
         return f"avatar upstream HTTP {exc.code}", 502
@@ -368,12 +435,14 @@ def api_chat():
     auth_error = require_api_auth()
     if auth_error:
         return auth_error
+
     data = request.get_json(silent=True) or {}
     message = str(data.get("message") or "").strip()
     character_id = data.get("character_id")
     conversation_id = data.get("conversation_id")
     if not message or not character_id:
         return jsonify({"error": "Missing message atau character_id"}), 400
+
     try:
         upstream = send_message_api(
             message,
@@ -386,6 +455,7 @@ def api_chat():
         content = message_obj.get("content") if isinstance(message_obj, dict) else None
         if not content and isinstance(upstream, dict):
             content = upstream.get("content") or upstream.get("response")
+
         returned_id = conversation_id
         if isinstance(upstream, dict):
             returned_id = upstream.get("conversation_id") or returned_id
@@ -393,6 +463,7 @@ def api_chat():
                 returned_id = upstream["conversation"].get("id") or returned_id
             if isinstance(message_obj, dict):
                 returned_id = message_obj.get("conversation_id") or returned_id
+
         if not content:
             return jsonify({"error": "SpicyChat API tidak mengembalikan isi balasan"}), 502
         return jsonify({"content": content, "conversation_id": returned_id})
@@ -407,7 +478,7 @@ def api_chat():
 @app.route("/logout")
 def logout():
     session.clear()
-    return redirect("/")
+    return redirect("/private-login")
 
 
 if __name__ == "__main__":
