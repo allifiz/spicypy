@@ -7,6 +7,11 @@ import os
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "spicypy-dev-secret-change-me")
+app.config.update(
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE="Lax",
+    SESSION_COOKIE_SECURE=os.environ.get("VERCEL") == "1",
+)
 
 AUTH_URL = "https://auth.spicychat.ai/oauth2/token"
 CONVO_URL = "https://prod.nd-api.com/v2/conversations?limit=25&sort=latest"
@@ -45,18 +50,57 @@ def api_headers(access_token=None):
 
 
 def get_access_token(refresh_token):
-    body = (
-        f"grant_type=refresh_token&refresh_token={urllib.parse.quote(refresh_token)}"
-        f"&client_id={CLIENT_ID}"
-    )
+    body = urllib.parse.urlencode({
+        "refresh_token": refresh_token,
+        "grant_type": "refresh_token",
+        "client_id": CLIENT_ID,
+    })
     req = urllib.request.Request(
         AUTH_URL,
         data=body.encode("utf-8"),
-        headers={"Content-Type": "application/x-www-form-urlencoded", "User-Agent": "Mozilla/5.0"},
+        headers={
+            "Accept": "*/*",
+            "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+            "Origin": "https://spicychat.ai",
+            "User-Agent": "Mozilla/5.0",
+        },
         method="POST",
     )
     with urllib.request.urlopen(req, timeout=30) as response:
-        return json.loads(response.read().decode("utf-8"))["access_token"]
+        payload = json.loads(response.read().decode("utf-8"))
+        access_token = payload.get("access_token")
+        if not access_token:
+            raise RuntimeError("SpicyChat tidak mengembalikan access_token")
+        return access_token
+
+
+def ensure_spicy_session():
+    """Auto-login untuk deployment personal menggunakan refresh token server-side."""
+    if session.get("access_token"):
+        return True
+
+    refresh_token = str(os.environ.get("SPICYCHAT_REFRESH_TOKEN") or "").strip()
+    if not refresh_token:
+        return False
+
+    try:
+        session["access_token"] = get_access_token(refresh_token)
+        session.setdefault("settings", DEFAULT_SETTINGS.copy())
+        session.pop("auth_error", None)
+        return True
+    except Exception as exc:
+        session.pop("access_token", None)
+        session["auth_error"] = str(exc)
+        return False
+
+
+def require_api_auth():
+    if ensure_spicy_session():
+        return None
+    return jsonify({
+        "error": session.get("auth_error")
+        or "SPICYCHAT_REFRESH_TOKEN belum dikonfigurasi atau tidak valid"
+    }), 401
 
 
 def get_conversations(access_token):
@@ -87,7 +131,6 @@ def search_characters_typesense(query="*", nsfw_mode="all", page=1, per_page=24,
         "popular": "_text_match(buckets: 3):desc,num_messages:desc",
         "rating": "_text_match(buckets: 3):desc,rating_score:desc,num_messages:desc",
     }
-
     payload = {
         "searches": [{
             "collection": "public_characters_alias",
@@ -103,7 +146,6 @@ def search_characters_typesense(query="*", nsfw_mode="all", page=1, per_page=24,
             "page": page,
         }]
     }
-
     req = urllib.request.Request(
         TYPESENSE_URL,
         data=json.dumps(payload).encode("utf-8"),
@@ -147,7 +189,6 @@ def send_message_api(message, access_token, char_id, conv_id, settings):
     }
     if conv_id:
         payload["conversation_id"] = conv_id
-
     headers = api_headers(access_token)
     headers["Content-Type"] = "application/json"
     req = urllib.request.Request(
@@ -172,8 +213,8 @@ def parse_upstream_error(exc):
 
 
 def page(template):
-    if "access_token" not in session:
-        return render_template("login.html")
+    if not ensure_spicy_session():
+        return render_template("login.html", auth_error=session.get("auth_error"))
     return render_template(template)
 
 
@@ -207,9 +248,10 @@ def service_worker():
 
 @app.route("/api/login", methods=["POST"])
 def api_login():
+    # Fallback lokal/manual. Di Vercel personal, gunakan SPICYCHAT_REFRESH_TOKEN.
     try:
         data = request.get_json(silent=True) or {}
-        refresh_token = data.get("refresh_token")
+        refresh_token = str(data.get("refresh_token") or "").strip()
         if not refresh_token:
             return jsonify({"error": "Token tidak boleh kosong"}), 400
         session["access_token"] = get_access_token(refresh_token)
@@ -221,8 +263,9 @@ def api_login():
 
 @app.route("/api/conversations")
 def api_conversations():
-    if "access_token" not in session:
-        return jsonify({"error": "Not logged in"}), 401
+    auth_error = require_api_auth()
+    if auth_error:
+        return auth_error
     try:
         return jsonify(get_conversations(session["access_token"]))
     except Exception as exc:
@@ -231,8 +274,9 @@ def api_conversations():
 
 @app.route("/api/characters")
 def api_characters():
-    if "access_token" not in session:
-        return jsonify({"error": "Not logged in"}), 401
+    auth_error = require_api_auth()
+    if auth_error:
+        return auth_error
     try:
         search = request.args.get("search", "*")
         nsfw_mode = request.args.get("nsfw", "all").lower()
@@ -251,13 +295,12 @@ def api_characters():
 
 @app.route("/api/avatar")
 def api_avatar():
-    if "access_token" not in session:
-        return "", 401
-
+    auth_error = require_api_auth()
+    if auth_error:
+        return auth_error
     raw_url = str(request.args.get("url") or "").strip()
     if not raw_url:
         return "", 404
-
     try:
         if raw_url.startswith("//"):
             url = "https:" + raw_url
@@ -265,7 +308,6 @@ def api_avatar():
             url = raw_url
         else:
             url = urllib.parse.urljoin(AVATAR_CDN_BASE, raw_url.lstrip("/"))
-
         parsed = urllib.parse.urlparse(url)
         host = (parsed.hostname or "").lower()
         allowed = (
@@ -276,7 +318,6 @@ def api_avatar():
         )
         if parsed.scheme not in {"http", "https"} or not allowed:
             return "", 403
-
         req = urllib.request.Request(
             url,
             headers={
@@ -303,15 +344,17 @@ def api_avatar():
 
 @app.route("/api/models")
 def api_models():
-    if "access_token" not in session:
-        return jsonify({"error": "Not logged in"}), 401
+    auth_error = require_api_auth()
+    if auth_error:
+        return auth_error
     return jsonify(get_app_config(session["access_token"]).get("inferenceModels", []))
 
 
 @app.route("/api/settings", methods=["GET", "POST"])
 def api_settings():
-    if "access_token" not in session:
-        return jsonify({"error": "Not logged in"}), 401
+    auth_error = require_api_auth()
+    if auth_error:
+        return auth_error
     if request.method == "POST":
         current = session.get("settings", DEFAULT_SETTINGS.copy())
         current.update(request.get_json(silent=True) or {})
@@ -322,16 +365,15 @@ def api_settings():
 
 @app.route("/api/chat", methods=["POST"])
 def api_chat():
-    if "access_token" not in session:
-        return jsonify({"error": "Not logged in"}), 401
-
+    auth_error = require_api_auth()
+    if auth_error:
+        return auth_error
     data = request.get_json(silent=True) or {}
     message = str(data.get("message") or "").strip()
     character_id = data.get("character_id")
     conversation_id = data.get("conversation_id")
     if not message or not character_id:
         return jsonify({"error": "Missing message atau character_id"}), 400
-
     try:
         upstream = send_message_api(
             message,
@@ -344,7 +386,6 @@ def api_chat():
         content = message_obj.get("content") if isinstance(message_obj, dict) else None
         if not content and isinstance(upstream, dict):
             content = upstream.get("content") or upstream.get("response")
-
         returned_id = conversation_id
         if isinstance(upstream, dict):
             returned_id = upstream.get("conversation_id") or returned_id
@@ -352,7 +393,6 @@ def api_chat():
                 returned_id = upstream["conversation"].get("id") or returned_id
             if isinstance(message_obj, dict):
                 returned_id = message_obj.get("conversation_id") or returned_id
-
         if not content:
             return jsonify({"error": "SpicyChat API tidak mengembalikan isi balasan"}), 502
         return jsonify({"content": content, "conversation_id": returned_id})
