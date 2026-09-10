@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify, session
+from flask import Flask, render_template, request, jsonify, session, Response
 import urllib.request
 import urllib.error
 import urllib.parse
@@ -6,9 +6,8 @@ import json
 import socket
 
 app = Flask(__name__)
-app.secret_key = 'spicychat_secret_key_12345'
+app.secret_key = "spicychat_secret_key_12345"
 
-# --- KONFIGURASI ---
 AUTH_URL = "https://auth.spicychat.ai/oauth2/token"
 CONVO_URL = "https://prod.nd-api.com/v2/conversations?limit=25&sort=latest"
 TYPESENSE_URL = "https://ts-lb.nd-api.com/multi_search?use_cache=true&x-typesense-api-key=STHKtT6jrC5z1IozTJHIeSN4qN9oL1s3"
@@ -55,8 +54,6 @@ MOBILE_UI_PATCH = r"""
       z-index: 150 !important;
       overflow: hidden;
     }
-    .sidebar-tabs { position: sticky; top: 0; z-index: 3; }
-    .sidebar-content, .sidebar-content.active { min-height: 0; max-height: 100%; }
     .chat-container {
       width: 100%;
       height: 100% !important;
@@ -64,19 +61,7 @@ MOBILE_UI_PATCH = r"""
       min-height: 0;
       overflow: hidden;
     }
-    .chat-header { min-height: 48px; gap: 8px; }
-    .chat-info {
-      min-width: 0;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-    .messages {
-      flex: 1 1 auto !important;
-      min-height: 0 !important;
-      padding-bottom: 16px;
-      overscroll-behavior: contain;
-    }
+    .messages { flex: 1 1 auto !important; min-height: 0 !important; }
     .input-container {
       width: 100%;
       min-width: 0;
@@ -84,29 +69,14 @@ MOBILE_UI_PATCH = r"""
       gap: 6px !important;
       padding: 8px 8px max(8px, env(safe-area-inset-bottom)) !important;
       flex-wrap: nowrap;
-      position: relative;
-      z-index: 5;
     }
     .input-container input {
       min-width: 0 !important;
       width: 0;
       flex: 1 1 auto !important;
       font-size: 16px !important;
-      padding: 10px 12px !important;
     }
-    .input-container button {
-      flex: 0 0 auto;
-      white-space: nowrap;
-      padding: 10px 12px !important;
-    }
-    .input-container button#italicBtn { padding: 10px !important; }
-    .character-grid { align-content: start; }
-    .modal { padding: max(12px, env(safe-area-inset-top)) 12px max(12px, env(safe-area-inset-bottom)); }
-    .modal-content {
-      width: 100% !important;
-      max-height: calc(var(--app-height, 100dvh) - 24px) !important;
-      padding: 18px !important;
-    }
+    .input-container button { flex: 0 0 auto; }
   }
 </style>
 <script>
@@ -122,17 +92,6 @@ MOBILE_UI_PATCH = r"""
     window.visualViewport.addEventListener('resize', syncViewportHeight);
     window.visualViewport.addEventListener('scroll', syncViewportHeight);
   }
-  document.addEventListener('DOMContentLoaded', function () {
-    var input = document.getElementById('messageInput');
-    if (!input) return;
-    input.addEventListener('focus', function () {
-      setTimeout(function () {
-        syncViewportHeight();
-        var messages = document.getElementById('messages');
-        if (messages) messages.scrollTop = messages.scrollHeight;
-      }, 120);
-    });
-  });
 })();
 </script>
 """
@@ -158,12 +117,37 @@ APP_BEHAVIOR_PATCH = r"""
     messages.scrollTop = messages.scrollHeight;
   }
 
-  document.addEventListener('DOMContentLoaded', function () {
-    var tabs = document.querySelectorAll('.tab-btn');
-    if (tabs.length > 1) tabs[1].innerHTML = '🏠 Home';
-    var search = document.getElementById('searchInput');
-    if (search) search.placeholder = 'Cari karakter SpicyChat...';
-  });
+  function removeDiscoverFromSidebar() {
+    var tabs = document.querySelectorAll('.sidebar-tabs .tab-btn');
+    if (tabs.length > 1) tabs[1].remove();
+
+    var contents = document.querySelectorAll('.sidebar .sidebar-content');
+    if (contents.length > 1) contents[1].remove();
+
+    var sidebarTabs = document.querySelector('.sidebar-tabs');
+    if (sidebarTabs) sidebarTabs.style.display = 'none';
+
+    var firstContent = document.querySelector('.sidebar .sidebar-content');
+    if (firstContent) {
+      firstContent.classList.add('active');
+      firstContent.style.display = 'flex';
+    }
+  }
+
+  function addHomeButton() {
+    var header = document.querySelector('.header');
+    if (!header || document.getElementById('homeNavBtn')) return;
+
+    var btn = document.createElement('button');
+    btn.id = 'homeNavBtn';
+    btn.textContent = '🏠 Home';
+    btn.style.marginLeft = '8px';
+    btn.onclick = function () { window.location.href = '/home'; };
+
+    var rightSide = header.lastElementChild;
+    if (rightSide) rightSide.insertBefore(btn, rightSide.firstChild);
+    else header.appendChild(btn);
+  }
 
   window.startNewChat = function (character) {
     var characterId = character && (character.character_id || character.id);
@@ -178,14 +162,19 @@ APP_BEHAVIOR_PATCH = r"""
       character: character,
     };
 
-    document.getElementById('chatHeader').style.display = 'flex';
-    document.getElementById('inputContainer').style.display = 'flex';
-    document.getElementById('charName').textContent = character.name || 'Unknown';
-
+    var chatHeader = document.getElementById('chatHeader');
+    var inputContainer = document.getElementById('inputContainer');
+    var charName = document.getElementById('charName');
     var messages = document.getElementById('messages');
-    messages.innerHTML = '<div class="empty-state">Mulai chat baru dengan ' +
-      (character.name || 'bot') + '</div>';
-    messages.scrollTop = messages.scrollHeight;
+
+    if (chatHeader) chatHeader.style.display = 'flex';
+    if (inputContainer) inputContainer.style.display = 'flex';
+    if (charName) charName.textContent = character.name || 'Unknown';
+    if (messages) {
+      messages.innerHTML = '<div class="empty-state">Mulai chat baru dengan ' +
+        (character.name || 'bot') + '</div>';
+      messages.scrollTop = messages.scrollHeight;
+    }
     closeSidebarOnMobile();
   };
 
@@ -258,6 +247,22 @@ APP_BEHAVIOR_PATCH = r"""
       messages.scrollTop = messages.scrollHeight;
     }
   };
+
+  document.addEventListener('DOMContentLoaded', function () {
+    removeDiscoverFromSidebar();
+    addHomeButton();
+
+    try {
+      var raw = sessionStorage.getItem('pendingCharacter');
+      if (raw) {
+        sessionStorage.removeItem('pendingCharacter');
+        var character = JSON.parse(raw);
+        setTimeout(function () { window.startNewChat(character); }, 0);
+      }
+    } catch (err) {
+      console.error('Failed to open selected character', err);
+    }
+  });
 })();
 </script>
 """
@@ -298,20 +303,53 @@ def get_conversations(access_token: str) -> list:
         return json.loads(response.read().decode("utf-8"))
 
 
-def search_characters_typesense(query: str = "*", is_nsfw: bool = False, page: int = 1, per_page: int = 24) -> dict:
-    nsfw_filter = "is_nsfw:true" if is_nsfw else "is_nsfw:false"
+def _safe_tag(tag: str) -> str:
+    return tag.replace("`", "").replace(",", " ").strip()
+
+
+def search_characters_typesense(
+    query: str = "*",
+    nsfw_mode: str = "all",
+    page: int = 1,
+    per_page: int = 24,
+    tags=None,
+    sort: str = "trending",
+) -> dict:
+    tags = tags or []
+
+    filters = ["application_ids:spicychat"]
+    if nsfw_mode == "nsfw":
+        filters.append("is_nsfw:true")
+    elif nsfw_mode == "sfw":
+        filters.append("is_nsfw:false")
+
+    clean_tags = [_safe_tag(tag) for tag in tags if _safe_tag(tag)]
+    if clean_tags:
+        tag_values = ",".join(f"`{tag}`" for tag in clean_tags)
+        filters.append(f"tags:=[{tag_values}]")
+
+    sort_map = {
+        "trending": "_text_match(buckets: 3):desc,num_messages_24h:desc",
+        "popular": "_text_match(buckets: 3):desc,num_messages:desc",
+        "rating": "_text_match(buckets: 3):desc,rating_score:desc,num_messages:desc",
+    }
+
     payload = {
         "searches": [{
             "collection": "public_characters_alias",
             "q": query if query else "*",
             "query_by": "name,title,tags,creator_username,character_id,type",
-            "include_fields": "name,title,tags,creator_username,character_id,avatar_is_nsfw,avatar_url,visibility,num_messages,rating_score,is_nsfw,type",
-            "sort_by": "_text_match(buckets: 3):desc,num_messages_24h:desc",
-            "filter_by": f"application_ids:spicychat && {nsfw_filter}",
+            "include_fields": (
+                "name,title,tags,creator_username,character_id,avatar_is_nsfw,"
+                "avatar_url,visibility,num_messages,num_messages_24h,rating_score,is_nsfw,type"
+            ),
+            "sort_by": sort_map.get(sort, sort_map["trending"]),
+            "filter_by": " && ".join(filters),
             "per_page": per_page,
             "page": page,
         }]
     }
+
     headers = {
         "Content-Type": "text/plain",
         "Accept": "application/json",
@@ -325,9 +363,15 @@ def search_characters_typesense(query: str = "*", is_nsfw: bool = False, page: i
     )
     with urllib.request.urlopen(req) as response:
         data = json.loads(response.read().decode("utf-8"))
-        hits = data.get("results", [{}])[0].get("hits", [])
+        result = data.get("results", [{}])[0]
+        hits = result.get("hits", [])
         characters = [hit.get("document", {}) for hit in hits]
-        return {"characters": characters, "total": len(characters)}
+        return {
+            "characters": characters,
+            "total": result.get("found", len(characters)),
+            "page": page,
+            "per_page": per_page,
+        }
 
 
 def get_app_config(access_token: str) -> dict:
@@ -385,6 +429,13 @@ def index():
     return html.replace("</body>", APP_BEHAVIOR_PATCH + "\n</body>")
 
 
+@app.route("/home")
+def home():
+    if "access_token" not in session:
+        return render_template("login.html")
+    return render_template("home.html")
+
+
 @app.route("/api/login", methods=["POST"])
 def api_login():
     try:
@@ -415,12 +466,48 @@ def api_characters():
         return jsonify({"error": "Not logged in"}), 401
     try:
         search = request.args.get("search", "*")
-        is_nsfw = request.args.get("is_nsfw", "false").lower() == "true"
-        page = int(request.args.get("page", 1))
-        per_page = int(request.args.get("per_page", 24))
-        return jsonify(search_characters_typesense(search, is_nsfw, page, per_page))
+        nsfw_mode = request.args.get("nsfw", "all").lower()
+        if nsfw_mode not in {"all", "sfw", "nsfw"}:
+            nsfw_mode = "all"
+        page = max(1, int(request.args.get("page", 1)))
+        per_page = min(48, max(1, int(request.args.get("per_page", 24))))
+        tags = [tag for tag in request.args.getlist("tag") if tag]
+        sort = request.args.get("sort", "trending").lower()
+        return jsonify(search_characters_typesense(search, nsfw_mode, page, per_page, tags, sort))
+    except urllib.error.HTTPError as exc:
+        return jsonify({"error": f"Typesense HTTP {exc.code}: {parse_upstream_error(exc)}", "characters": []}), 502
     except Exception as exc:
         return jsonify({"error": str(exc), "characters": []}), 500
+
+
+@app.route("/api/avatar")
+def api_avatar():
+    if "access_token" not in session:
+        return jsonify({"error": "Not logged in"}), 401
+
+    url = request.args.get("url", "")
+    if not url:
+        return "", 404
+
+    try:
+        parsed = urllib.parse.urlparse(url)
+        host = (parsed.hostname or "").lower()
+        allowed = (
+            host == "spicychat.ai"
+            or host.endswith(".spicychat.ai")
+            or host == "nd-api.com"
+            or host.endswith(".nd-api.com")
+        )
+        if parsed.scheme not in {"http", "https"} or not allowed:
+            return "", 403
+
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0", "Accept": "image/*"})
+        with urllib.request.urlopen(req, timeout=10) as response:
+            body = response.read()
+            content_type = response.headers.get("Content-Type", "image/jpeg")
+            return Response(body, content_type=content_type, headers={"Cache-Control": "public, max-age=3600"})
+    except Exception:
+        return "", 404
 
 
 @app.route("/api/models")
@@ -492,9 +579,7 @@ def api_chat():
             "conversation_id": returned_conversation_id or conversation_id,
         })
     except urllib.error.HTTPError as exc:
-        return jsonify({
-            "error": f"SpicyChat API HTTP {exc.code}: {parse_upstream_error(exc)}"
-        }), 502
+        return jsonify({"error": f"SpicyChat API HTTP {exc.code}: {parse_upstream_error(exc)}"}), 502
     except urllib.error.URLError as exc:
         return jsonify({"error": f"Gagal menghubungi SpicyChat API: {exc.reason}"}), 502
     except Exception as exc:
