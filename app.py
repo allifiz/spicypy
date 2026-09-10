@@ -17,10 +17,10 @@ CLIENT_ID = "fb5754f42ee84f4787f9bd8ff49cac7a"
 AVATAR_CDN_BASE = "https://cdn.nd-api.com/"
 
 DEFAULT_SETTINGS = {
-    "model_id": "stheno-8b",
-    "temperature": 0.7,
-    "max_tokens": 180,
-    "top_p": 0.95,
+    "model_id": "deepseek-v4pro",
+    "temperature": 1.5,
+    "max_tokens": 300,
+    "top_p": 1.0,
     "force_indonesian": True,
 }
 
