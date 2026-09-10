@@ -25,10 +25,8 @@ DEFAULT_SETTINGS = {
 }
 
 INDONESIAN_DIRECTOR_COMMAND = (
-    "/cmd Selalu balas dalam Bahasa Indonesia. Gunakan gaya bahasa nonformal, natural, dan mengikuti "
-    "cara bicara pengguna, termasuk slang, sapaan, singkatan, dan tingkat santainya. Semua dialog, narasi, "
-    "aksi, deskripsi, dan respons harus tetap dalam Bahasa Indonesia. Jangan kembali ke bahasa Inggris kecuali "
-    "pengguna secara eksplisit meminta bahasa lain. Pertahankan kepribadian karakter dan konteks roleplay."
+    "/cmd Reply ONLY in casual Indonesian. Match the user's slang, tone, and level of formality. "
+    "Keep all dialogue, narration, actions, and descriptions in Indonesian. Never switch to English unless the user explicitly asks."
 )
 
 
@@ -36,7 +34,7 @@ def api_headers(access_token=None):
     headers = {
         "Accept": "application/json, text/plain, */*",
         "x-app-id": "spicychat",
-        "x-app-version": "4.1.0",
+        "x-app-version": "4.1.2",
         "x-platform": "WEB",
         "x-platform-os": "DESKTOP",
         "User-Agent": "Mozilla/5.0",
@@ -135,7 +133,7 @@ def get_app_config(access_token):
 def build_upstream_message(message, settings):
     if not settings.get("force_indonesian", True):
         return message
-    return f"{message}\n\n{INDONESIAN_DIRECTOR_COMMAND}"
+    return f"{message}\n{INDONESIAN_DIRECTOR_COMMAND}"
 
 
 def send_message_api(message, access_token, char_id, conv_id, settings):
@@ -261,8 +259,6 @@ def api_avatar():
         return "", 404
 
     try:
-        # Typesense sering mengembalikan avatar_url sebagai path relatif: avatars/xxx.jpg
-        # Resolve path itu ke CDN resmi ND API sebelum validasi host.
         if raw_url.startswith("//"):
             url = "https:" + raw_url
         elif raw_url.startswith("http://") or raw_url.startswith("https://"):
@@ -284,9 +280,10 @@ def api_avatar():
         req = urllib.request.Request(
             url,
             headers={
-                "User-Agent": "Mozilla/5.0",
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/151 Safari/537.36",
                 "Accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
                 "Referer": "https://spicychat.ai/",
+                "Origin": "https://spicychat.ai",
             },
         )
         with urllib.request.urlopen(req, timeout=15) as response:
@@ -298,6 +295,8 @@ def api_avatar():
                 content_type=content_type,
                 headers={"Cache-Control": "public, max-age=86400"},
             )
+    except urllib.error.HTTPError as exc:
+        return f"avatar upstream HTTP {exc.code}", 502
     except Exception:
         return "", 404
 
