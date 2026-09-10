@@ -14,13 +14,22 @@ TYPESENSE_URL = "https://ts-lb.nd-api.com/multi_search?use_cache=true&x-typesens
 CHAT_URL = "https://chat.nd-api.com/chat"
 APP_CONFIG_URL = "https://prod.nd-api.com/v2/applications/spicychat"
 CLIENT_ID = "fb5754f42ee84f4787f9bd8ff49cac7a"
+AVATAR_CDN_BASE = "https://cdn.nd-api.com/"
 
 DEFAULT_SETTINGS = {
     "model_id": "stheno-8b",
     "temperature": 0.7,
     "max_tokens": 180,
     "top_p": 0.95,
+    "force_indonesian": True,
 }
+
+INDONESIAN_DIRECTOR_COMMAND = (
+    "/cmd Selalu balas dalam Bahasa Indonesia. Gunakan gaya bahasa nonformal, natural, dan mengikuti "
+    "cara bicara pengguna, termasuk slang, sapaan, singkatan, dan tingkat santainya. Semua dialog, narasi, "
+    "aksi, deskripsi, dan respons harus tetap dalam Bahasa Indonesia. Jangan kembali ke bahasa Inggris kecuali "
+    "pengguna secara eksplisit meminta bahasa lain. Pertahankan kepribadian karakter dan konteks roleplay."
+)
 
 
 def api_headers(access_token=None):
@@ -123,9 +132,15 @@ def get_app_config(access_token):
         return {}
 
 
+def build_upstream_message(message, settings):
+    if not settings.get("force_indonesian", True):
+        return message
+    return f"{message}\n\n{INDONESIAN_DIRECTOR_COMMAND}"
+
+
 def send_message_api(message, access_token, char_id, conv_id, settings):
     payload = {
-        "message": message,
+        "message": build_upstream_message(message, settings),
         "character_id": char_id,
         "model_id": settings.get("model_id", DEFAULT_SETTINGS["model_id"]),
         "temperature": settings.get("temperature", DEFAULT_SETTINGS["temperature"]),
@@ -240,20 +255,47 @@ def api_characters():
 def api_avatar():
     if "access_token" not in session:
         return "", 401
-    url = request.args.get("url", "")
-    if not url:
+
+    raw_url = str(request.args.get("url") or "").strip()
+    if not raw_url:
         return "", 404
+
     try:
+        # Typesense sering mengembalikan avatar_url sebagai path relatif: avatars/xxx.jpg
+        # Resolve path itu ke CDN resmi ND API sebelum validasi host.
+        if raw_url.startswith("//"):
+            url = "https:" + raw_url
+        elif raw_url.startswith("http://") or raw_url.startswith("https://"):
+            url = raw_url
+        else:
+            url = urllib.parse.urljoin(AVATAR_CDN_BASE, raw_url.lstrip("/"))
+
         parsed = urllib.parse.urlparse(url)
         host = (parsed.hostname or "").lower()
-        allowed = host == "spicychat.ai" or host.endswith(".spicychat.ai") or host == "nd-api.com" or host.endswith(".nd-api.com")
+        allowed = (
+            host == "spicychat.ai"
+            or host.endswith(".spicychat.ai")
+            or host == "nd-api.com"
+            or host.endswith(".nd-api.com")
+        )
         if parsed.scheme not in {"http", "https"} or not allowed:
             return "", 403
-        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0", "Accept": "image/*"})
+
+        req = urllib.request.Request(
+            url,
+            headers={
+                "User-Agent": "Mozilla/5.0",
+                "Accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+                "Referer": "https://spicychat.ai/",
+            },
+        )
         with urllib.request.urlopen(req, timeout=15) as response:
+            content_type = response.headers.get("Content-Type", "image/jpeg")
+            if not content_type.startswith("image/"):
+                return "", 404
             return Response(
                 response.read(),
-                content_type=response.headers.get("Content-Type", "image/jpeg"),
+                content_type=content_type,
                 headers={"Cache-Control": "public, max-age=86400"},
             )
     except Exception:
