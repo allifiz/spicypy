@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SpicyPy - Home</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #0f1117; color: #fff; }
+    a { color: inherit; text-decoration: none; }
+    button, input, select { font: inherit; }
+    .topbar { position: sticky; top: 0; z-index: 20; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 24px; background: rgba(15,17,23,.95); border-bottom: 1px solid #262a35; backdrop-filter: blur(12px); }
+    .brand { font-size: 20px; font-weight: 800; }
+    .top-actions { display: flex; gap: 10px; }
+    .top-actions a { padding: 9px 14px; border-radius: 10px; background: #1b1f2a; }
+    .hero { padding: 34px 24px 18px; max-width: 1400px; margin: 0 auto; }
+    .hero h1 { margin: 0 0 8px; font-size: clamp(28px, 4vw, 44px); }
+    .hero p { margin: 0; color: #a8afbf; max-width: 760px; }
+    .controls { max-width: 1400px; margin: 0 auto; padding: 0 24px 20px; display: grid; gap: 14px; }
+    .search-row { display: grid; grid-template-columns: 1fr 170px 170px; gap: 12px; }
+    .search-row input, .search-row select { width: 100%; background: #171a22; color: #fff; border: 1px solid #303543; border-radius: 12px; padding: 12px 14px; outline: none; }
+    .search-row input:focus, .search-row select:focus { border-color: #7c5cff; }
+    .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+    .chip { border: 1px solid #303543; background: #171a22; color: #c9cfdb; border-radius: 999px; padding: 8px 12px; cursor: pointer; }
+    .chip.active { background: #7c5cff; border-color: #7c5cff; color: #fff; }
+    .summary { max-width: 1400px; margin: 0 auto; padding: 0 24px 14px; color: #9aa2b3; }
+    .grid { max-width: 1400px; margin: 0 auto; padding: 0 24px 30px; display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; }
+    .card { background: #171a22; border: 1px solid #272c38; border-radius: 16px; overflow: hidden; cursor: pointer; transition: .2s ease; min-width: 0; }
+    .card:hover { transform: translateY(-3px); border-color: #5f49c8; box-shadow: 0 10px 30px rgba(0,0,0,.25); }
+    .avatar-wrap { aspect-ratio: 1 / 1.1; background: #202430; position: relative; overflow: hidden; }
+    .avatar { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .badge { position: absolute; top: 10px; left: 10px; padding: 5px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; background: rgba(10,12,18,.78); }
+    .card-body { padding: 13px; }
+    .name { font-size: 16px; font-weight: 750; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .creator { margin-top: 3px; color: #9098aa; font-size: 12px; }
+    .title { margin-top: 8px; color: #c6cbd6; font-size: 13px; line-height: 1.4; height: 36px; overflow: hidden; }
+    .meta { display: flex; justify-content: space-between; gap: 8px; margin-top: 12px; color: #949caf; font-size: 12px; }
+    .tags { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 10px; max-height: 48px; overflow: hidden; }
+    .tag { padding: 4px 7px; border-radius: 999px; background: #222633; color: #b9c0cf; font-size: 10px; }
+    .loading, .empty, .error { grid-column: 1 / -1; text-align: center; padding: 42px 16px; color: #9aa2b3; }
+    .error { color: #ff9f9f; }
+    .pager { display: flex; justify-content: center; gap: 10px; padding: 0 24px 40px; }
+    .pager button { background: #202430; color: #fff; border: 1px solid #343a49; border-radius: 10px; padding: 10px 16px; cursor: pointer; }
+    .pager button:disabled { opacity: .4; cursor: default; }
+    @media (max-width: 760px) {
+      .topbar { padding: 12px 14px; }
+      .hero { padding: 24px 14px 16px; }
+      .controls, .summary, .grid { padding-left: 14px; padding-right: 14px; }
+      .search-row { grid-template-columns: 1fr; }
+      .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+      .card-body { padding: 10px; }
+      .name { font-size: 14px; }
+      .title { font-size: 11px; height: 31px; }
+      .creator, .meta { font-size: 10px; }
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">🌶️ SpicyPy</div>
+    <div class="top-actions">
+      <a href="/">💬 Chat</a>
+      <a href="/logout">Keluar</a>
+    </div>
+  </header>
+
+  <section class="hero">
+    <h1>Temukan karakter</h1>
+    <p>Katalog karakter dari SpicyChat dengan pencarian, tag, konten, dan pengurutan. Klik karakter untuk langsung membuka chat.</p>
+  </section>
+
+  <section class="controls">
+    <div class="search-row">
+      <input id="searchInput" type="search" placeholder="Cari nama, karakter, tag, atau creator..." autocomplete="off" />
+      <select id="nsfwSelect">
+        <option value="all">Semua konten</option>
+        <option value="sfw">SFW</option>
+        <option value="nsfw">NSFW</option>
+      </select>
+      <select id="sortSelect">
+        <option value="trending">Trending</option>
+        <option value="popular">Paling populer</option>
+        <option value="rating">Rating tertinggi</option>
+      </select>
+    </div>
+    <div class="chips" id="tagChips"></div>
+  </section>
+
+  <div class="summary" id="summary">Memuat karakter...</div>
+  <main class="grid" id="grid"><div class="loading">Memuat katalog SpicyChat...</div></main>
+  <div class="pager">
+    <button id="prevBtn">← Sebelumnya</button>
+    <button id="nextBtn">Berikutnya →</button>
+  </div>
+
+  <script>
+    const TAGS = [
+      'Female', 'Male', 'Anime', 'RPG', 'Fantasy', 'Adventure', 'Romance',
+      'Dominant', 'Submissive', 'FemalePOV', 'MalePOV', 'Multiple Characters',
+      'Original Character', 'Fictional Media', 'LGBTQ+', 'Sci-Fi', 'Action', 'Monster'
+    ];
+
+    const state = { page: 1, perPage: 24, tags: new Set(), total: 0, timer: null };
+    const grid = document.getElementById('grid');
+    const summary = document.getElementById('summary');
+    const searchInput = document.getElementById('searchInput');
+    const nsfwSelect = document.getElementById('nsfwSelect');
+    const sortSelect = document.getElementById('sortSelect');
+    const prevBtn = document.getElementById('prevBtn');
+    const nextBtn = document.getElementById('nextBtn');
+    const tagChips = document.getElementById('tagChips');
+
+    function escapeHtml(value) {
+      return String(value ?? '')
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#039;');
+    }
+
+    function compactNumber(value) {
+      const n = Number(value || 0);
+      return Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 }).format(n);
+    }
+
+    function avatarSrc(url) {
+      if (!url) return '';
+      return '/api/avatar?url=' + encodeURIComponent(url);
+    }
+
+    function renderTagChips() {
+      tagChips.innerHTML = TAGS.map(tag => `
+        <button class="chip ${state.tags.has(tag) ? 'active' : ''}" data-tag="${escapeHtml(tag)}">${escapeHtml(tag)}</button>
+      `).join('');
+
+      tagChips.querySelectorAll('.chip').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const tag = btn.dataset.tag;
+          if (state.tags.has(tag)) state.tags.delete(tag);
+          else state.tags.add(tag);
+          state.page = 1;
+          renderTagChips();
+          loadCharacters();
+        });
+      });
+    }
+
+    function buildParams() {
+      const params = new URLSearchParams();
+      params.set('search', searchInput.value.trim() || '*');
+      params.set('nsfw', nsfwSelect.value);
+      params.set('sort', sortSelect.value);
+      params.set('page', state.page);
+      params.set('per_page', state.perPage);
+      state.tags.forEach(tag => params.append('tag', tag));
+      return params;
+    }
+
+    function openCharacter(character) {
+      sessionStorage.setItem('pendingCharacter', JSON.stringify(character));
+      window.location.href = '/';
+    }
+
+    function renderCharacters(characters) {
+      if (!characters.length) {
+        grid.innerHTML = '<div class="empty">Tidak ada karakter yang cocok dengan filter ini.</div>';
+        return;
+      }
+
+      grid.innerHTML = '';
+      characters.forEach(character => {
+        const card = document.createElement('article');
+        card.className = 'card';
+        const tags = Array.isArray(character.tags) ? character.tags.slice(0, 6) : [];
+        const rating = character.rating_score == null ? '-' : Number(character.rating_score).toFixed(0) + '%';
+        const avatar = avatarSrc(character.avatar_url);
+
+        card.innerHTML = `
+          <div class="avatar-wrap">
+            ${avatar ? `<img class="avatar" src="${avatar}" alt="${escapeHtml(character.name)}" loading="lazy" onerror="this.style.display='none'">` : ''}
+            <div class="badge">${character.is_nsfw ? 'NSFW' : 'SFW'}</div>
+          </div>
+          <div class="card-body">
+            <div class="name">${escapeHtml(character.name || 'Unknown')}</div>
+            <div class="creator">@${escapeHtml(character.creator_username || 'unknown')}</div>
+            <div class="title">${escapeHtml(character.title || '')}</div>
+            <div class="meta">
+              <span>💬 ${compactNumber(character.num_messages)}</span>
+              <span>★ ${rating}</span>
+            </div>
+            <div class="tags">${tags.map(tag => `<span class="tag">${escapeHtml(tag)}</span>`).join('')}</div>
+          </div>
+        `;
+        card.addEventListener('click', () => openCharacter(character));
+        grid.appendChild(card);
+      });
+    }
+
+    async function loadCharacters() {
+      grid.innerHTML = '<div class="loading">Memuat katalog SpicyChat...</div>';
+      try {
+        const response = await fetch('/api/characters?' + buildParams().toString());
+        const data = await response.json();
+        if (!response.ok || data.error) throw new Error(data.error || ('HTTP ' + response.status));
+
+        state.total = Number(data.total || 0);
+        renderCharacters(data.characters || []);
+        const start = state.total ? ((state.page - 1) * state.perPage) + 1 : 0;
+        const end = Math.min(state.page * state.perPage, state.total);
+        summary.textContent = `${state.total.toLocaleString()} karakter • menampilkan ${start}-${end}`;
+        prevBtn.disabled = state.page <= 1;
+        nextBtn.disabled = end >= state.total;
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      } catch (err) {
+        grid.innerHTML = `<div class="error">Gagal memuat karakter: ${escapeHtml(err.message || err)}</div>`;
+        summary.textContent = 'Katalog gagal dimuat';
+      }
+    }
+
+    searchInput.addEventListener('input', () => {
+      clearTimeout(state.timer);
+      state.timer = setTimeout(() => { state.page = 1; loadCharacters(); }, 350);
+    });
+    nsfwSelect.addEventListener('change', () => { state.page = 1; loadCharacters(); });
+    sortSelect.addEventListener('change', () => { state.page = 1; loadCharacters(); });
+    prevBtn.addEventListener('click', () => { if (state.page > 1) { state.page--; loadCharacters(); } });
+    nextBtn.addEventListener('click', () => { if (state.page * state.perPage < state.total) { state.page++; loadCharacters(); } });
+
+    renderTagChips();
+    loadCharacters();
+  </script>
+</body>
+</html>
