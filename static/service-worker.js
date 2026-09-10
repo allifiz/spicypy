@@ -1,4 +1,4 @@
-const CACHE='spicypy-v2';
+const CACHE='spicypy-v3';
 const STATIC=['/manifest.webmanifest','/static/icon.svg'];
 
 self.addEventListener('install',event=>{
