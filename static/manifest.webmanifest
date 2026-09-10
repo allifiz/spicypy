@@ -1,0 +1,13 @@
+{
+  "name": "SpicyPy",
+  "short_name": "SpicyPy",
+  "description": "Mobile-first character chat client",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0f1015",
+  "theme_color": "#111218",
+  "icons": [
+    {"src": "/static/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable"}
+  ]
+}
