@@ -1,0 +1,828 @@
+<!doctype html>
+<html lang="id">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>SpicyChat - Chat</title>
+
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        background: #f5f5f5;
+        height: 100vh;
+        height: -webkit-fill-available; /* Untuk Safari iOS */
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+      }
+      .header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 12px 16px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        z-index: 100;
+        flex-shrink: 0; /* Header tidak boleh shrink */
+      }
+      .header h1 {
+        font-size: 18px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .header button {
+        background: rgba(255, 255, 255, 0.2);
+        color: white;
+        border: none;
+        padding: 8px 12px;
+        border-radius: 8px;
+        cursor: pointer;
+        font-size: 14px;
+      }
+      .main-container {
+        display: flex;
+        flex: 1;
+        overflow: hidden;
+        position: relative;
+        min-height: 0; /* Penting untuk flex child */
+      }
+
+      .sidebar {
+        width: 320px;
+        background: white;
+        border-right: 1px solid #e0e0e0;
+        display: flex;
+        flex-direction: column;
+        transition: transform 0.3s ease;
+        flex-shrink: 0;
+      }
+      .sidebar-tabs {
+        display: flex;
+        border-bottom: 2px solid #e0e0e0;
+        background: #f9f9f9;
+        flex-shrink: 0;
+      }
+      .tab-btn {
+        flex: 1;
+        padding: 14px;
+        border: none;
+        background: none;
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: 600;
+        color: #666;
+        transition: all 0.2s;
+      }
+      .tab-btn.active {
+        color: #667eea;
+        background: white;
+        border-bottom: 3px solid #667eea;
+      }
+      .sidebar-content {
+        flex: 1;
+        overflow-y: auto;
+        display: none;
+        min-height: 0;
+      }
+      .sidebar-content.active {
+        display: flex;
+        flex-direction: column;
+      }
+
+      .convo-item {
+        padding: 14px;
+        border-bottom: 1px solid #f0f0f0;
+        cursor: pointer;
+        transition: background 0.2s;
+      }
+      .convo-item:hover {
+        background: #f9f9f9;
+      }
+      .convo-item.active {
+        background: #e7f3ff;
+        border-left: 3px solid #667eea;
+      }
+      .convo-name {
+        font-weight: 600;
+        color: #333;
+        margin-bottom: 4px;
+        font-size: 15px;
+      }
+      .convo-preview {
+        font-size: 13px;
+        color: #666;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .search-box {
+        padding: 12px;
+        border-bottom: 1px solid #e0e0e0;
+        background: #f9f9f9;
+        flex-shrink: 0;
+      }
+      .search-box input {
+        width: 100%;
+        padding: 10px 14px;
+        border: 2px solid #e0e0e0;
+        border-radius: 20px;
+        font-size: 14px;
+        margin-bottom: 10px;
+      }
+      .search-box input:focus {
+        outline: none;
+        border-color: #667eea;
+      }
+
+      .nsfw-toggle {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 13px;
+        color: #666;
+        cursor: pointer;
+      }
+      .nsfw-toggle input {
+        cursor: pointer;
+      }
+
+      .character-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+        gap: 12px;
+        padding: 12px;
+      }
+      .character-card {
+        background: white;
+        border: 1px solid #e0e0e0;
+        border-radius: 12px;
+        padding: 12px;
+        cursor: pointer;
+        transition: all 0.2s;
+        text-align: center;
+      }
+      .character-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        border-color: #667eea;
+      }
+      .character-avatar {
+        width: 70px;
+        height: 70px;
+        border-radius: 50%;
+        margin: 0 auto 8px;
+        background: #f0f0f0;
+        display: flex;
+        align-tems: center;
+        justify-content: center;
+        font-size: 28px;
+        overflow: hidden;
+      }
+      .character-avatar img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+      .character-name {
+        font-weight: 600;
+        color: #333;
+        font-size: 14px;
+        margin-bottom: 4px;
+      }
+      .character-title {
+        font-size: 11px;
+        color: #999;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+      }
+
+      .chat-container {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        background: white;
+        min-height: 0; /* Penting! */
+        position: relative;
+      }
+      .chat-header {
+        padding: 12px 16px;
+        border-bottom: 1px solid #e0e0e0;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        background: #f9f9f9;
+        flex-shrink: 0;
+      }
+      .settings-btn {
+        background: #667eea;
+        color: white;
+        border: none;
+        padding: 8px 14px;
+        border-radius: 8px;
+        cursor: pointer;
+        font-size: 13px;
+      }
+
+      .messages {
+        flex: 1;
+        overflow-y: auto;
+        padding: 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        min-height: 0; /* Penting untuk scroll! */
+      }
+      .message {
+        max-width: 80%;
+        padding: 10px 14px;
+        border-radius: 18px;
+        line-height: 1.5;
+        font-size: 14px;
+        word-wrap: break-word;
+      }
+      .message.user {
+        background: #667eea;
+        color: white;
+        align-self: flex-end;
+        border-bottom-right-radius: 4px;
+      }
+      .message.bot {
+        background: #f0f0f0;
+        color: #333;
+        align-self: flex-start;
+        border-bottom-left-radius: 4px;
+      }
+      .message em {
+        font-style: italic;
+        opacity: 0.9;
+      }
+      .message strong {
+        font-weight: bold;
+      }
+
+      .input-container {
+        padding: 12px 16px;
+        border-top: 1px solid #e0e0e0;
+        display: flex;
+        gap: 8px;
+        background: #f9f9f9;
+        flex-shrink: 0; /* Input tidak boleh shrink */
+      }
+      .input-container input {
+        flex: 1;
+        padding: 10px 14px;
+        border: 2px solid #e0e0e0;
+        border-radius: 20px;
+        font-size: 14px;
+      }
+      .input-container input:focus {
+        outline: none;
+        border-color: #667eea;
+      }
+      .input-container button {
+        background: #667eea;
+        color: white;
+        border: none;
+        padding: 10px 20px;
+        border-radius: 20px;
+        cursor: pointer;
+        font-weight: 600;
+        font-size: 14px;
+      }
+      .input-container button:disabled {
+        background: #ccc;
+        cursor: not-allowed;
+      }
+
+      .empty-state {
+        flex: 1;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        color: #999;
+        font-size: 16px;
+        text-align: center;
+        padding: 20px;
+      }
+      .loading {
+        text-align: center;
+        color: #999;
+        padding: 20px;
+      }
+
+      .modal {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.5);
+        justify-content: center;
+        align-items: center;
+        z-index: 1000;
+      }
+      .modal.active {
+        display: flex;
+      }
+      .modal-content {
+        background: white;
+        padding: 24px;
+        border-radius: 15px;
+        max-width: 500px;
+        width: 90%;
+        max-height: 85vh;
+        overflow-y: auto;
+      }
+      .modal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 20px;
+      }
+      .close-btn {
+        background: none;
+        border: none;
+        font-size: 28px;
+        cursor: pointer;
+        color: #999;
+      }
+      .form-group {
+        margin-bottom: 18px;
+      }
+      .form-group label {
+        display: block;
+        margin-bottom: 8px;
+        color: #333;
+        font-weight: 500;
+        font-size: 14px;
+      }
+      .form-group select,
+      .form-group input[type="range"] {
+        width: 100%;
+        padding: 10px;
+        border: 2px solid #e0e0e0;
+        border-radius: 8px;
+        font-size: 14px;
+      }
+      .save-btn {
+        width: 100%;
+        padding: 12px;
+        background: #667eea;
+        color: white;
+        border: none;
+        border-radius: 8px;
+        font-size: 15px;
+        font-weight: 600;
+        cursor: pointer;
+      }
+
+      .menu-toggle {
+        display: none;
+        background: none;
+        border: none;
+        color: white;
+        font-size: 24px;
+        cursor: pointer;
+        padding: 4px 8px;
+      }
+
+      /* ========== MOBILE RESPONSIVE ========== */
+      @media (max-width: 768px) {
+        .menu-toggle {
+          display: block;
+        }
+
+        .sidebar {
+          position: fixed;
+          left: 0;
+          top: 0;
+          bottom: 0;
+          width: 100%;
+          max-width: 100%;
+          transform: translateX(-100%);
+          z-index: 99;
+          box-shadow: 2px 0 10px rgba(0, 0, 0, 0.1);
+        }
+        .sidebar.active {
+          transform: translateX(0);
+        }
+
+        .main-container {
+          position: relative;
+        }
+
+        .chat-container {
+          width: 100%;
+          height: 100vh;
+          height: -webkit-fill-available;
+        }
+
+        .messages {
+          padding: 12px;
+          gap: 8px;
+        }
+
+        .message {
+          max-width: 85%;
+          font-size: 13px;
+          padding: 8px 12px;
+        }
+
+        .input-container {
+          padding: 10px 12px;
+        }
+
+        .input-container input {
+          font-size: 14px;
+          padding: 8px 12px;
+        }
+
+        .input-container button {
+          padding: 8px 16px;
+          font-size: 13px;
+        }
+
+        .character-grid {
+          grid-template-columns: repeat(2, 1fr);
+          gap: 8px;
+          padding: 8px;
+        }
+
+        .character-card {
+          padding: 8px;
+        }
+
+        .character-avatar {
+          width: 60px;
+          height: 60px;
+          font-size: 24px;
+          margin-bottom: 6px;
+        }
+
+        .character-name {
+          font-size: 13px;
+        }
+
+        .character-title {
+          font-size: 10px;
+        }
+
+        .chat-header {
+          padding: 10px 12px;
+        }
+
+        .header h1 {
+          font-size: 16px;
+        }
+      }
+
+      /* Small phones */
+      @media (max-width: 480px) {
+        .message {
+          max-width: 90%;
+          font-size: 12px;
+        }
+
+        .character-grid {
+          grid-template-columns: repeat(2, 1fr);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="header">
+      <div style="display: flex; align-items: center; gap: 10px">
+        <button class="menu-toggle" onclick="toggleSidebar()">☰</button>
+        <h1>🌶️ SpicyChat</h1>
+      </div>
+      <button onclick="logout()">Logout</button>
+    </div>
+
+    <div class="main-container">
+      <div class="sidebar" id="sidebar">
+        <div class="sidebar-tabs">
+          <button class="tab-btn active" onclick="switchTab('history')">💬 History</button>
+          <button class="tab-btn" onclick="switchTab('discover')">🔍 Discover</button>
+        </div>
+
+        <div class="sidebar-content active" id="historyTab">
+          <div class="loading">Memuat riwayat chat...</div>
+        </div>
+
+        <div class="sidebar-content" id="discoverTab">
+          <div class="search-box">
+            <input type="text" id="searchInput" placeholder="Cari karakter..." oninput="searchCharacters()" />
+            <label class="nsfw-toggle">
+              <input type="checkbox" id="nsfwToggle" onchange="searchCharacters()" />
+              Tampilkan karakter NSFW
+            </label>
+          </div>
+          <div class="character-grid" id="characterGrid">
+            <div class="loading">Memuat karakter...</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="chat-container">
+        <div class="chat-header" id="chatHeader" style="display: none">
+          <div class="chat-info"><strong id="charName">Pilih karakter</strong></div>
+          <button class="settings-btn" onclick="openSettings()">⚙️ Settings</button>
+        </div>
+
+        <div class="messages" id="messages">
+          <div class="empty-state">Pilih karakter untuk mulai chat</div>
+        </div>
+
+        <div class="input-container" id="inputContainer" style="display: none">
+          <input type="text" id="messageInput" placeholder="Ketik pesan..." />
+          <button id="sendBtn" onclick="sendMessage()">Kirim</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div class="modal" id="settingsModal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2>⚙️ Generation Settings</h2>
+          <button class="close-btn" onclick="closeSettings()">×</button>
+        </div>
+        <div class="form-group">
+          <label>Model</label>
+          <select id="modelSelect"></select>
+        </div>
+        <div class="form-group">
+          <label>Temperature: <span id="tempValue">0.7</span></label>
+          <input
+            type="range"
+            id="tempSlider"
+            min="0"
+            max="2"
+            step="0.1"
+            value="0.7"
+            oninput="document.getElementById('tempValue').textContent = this.value"
+          />
+        </div>
+        <div class="form-group">
+          <label>Max Tokens: <span id="tokensValue">180</span></label>
+          <input
+            type="range"
+            id="tokensSlider"
+            min="50"
+            max="500"
+            step="10"
+            value="180"
+            oninput="document.getElementById('tokensValue').textContent = this.value"
+          />
+        </div>
+        <div class="form-group">
+          <label>Top P: <span id="topPValue">0.95</span></label>
+          <input
+            type="range"
+            id="topPSlider"
+            min="0"
+            max="1"
+            step="0.05"
+            value="0.95"
+            oninput="document.getElementById('topPValue').textContent = this.value"
+          />
+        </div>
+        <button class="save-btn" onclick="saveSettings()">Simpan</button>
+      </div>
+    </div>
+
+    <script>
+      let currentConvo = null;
+      let models = [];
+      let searchTimeout = null;
+
+      function formatMessage(text) {
+        let formatted = text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        formatted = formatted.replace(/(?<!\*)\*([^*\n]+)\*(?!\*)/g, "<em>$1</em>");
+        formatted = formatted.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+        formatted = formatted.replace(/\*\*\*([^*]+)\*\*\*/g, "<strong><em>$1</em></strong>");
+        formatted = formatted.replace(/\n/g, "<br>");
+        return formatted;
+      }
+
+      function toggleSidebar() {
+        document.getElementById("sidebar").classList.toggle("active");
+      }
+
+      function switchTab(tab) {
+        document.querySelectorAll(".tab-btn").forEach((btn) => btn.classList.remove("active"));
+        document.querySelectorAll(".sidebar-content").forEach((content) => content.classList.remove("active"));
+        event.target.classList.add("active");
+        document.getElementById(tab + "Tab").classList.add("active");
+        if (tab === "discover") loadCharacters();
+      }
+
+      async function loadConversations() {
+        try {
+          const response = await fetch("/api/conversations");
+          const convos = await response.json();
+          const list = document.getElementById("historyTab");
+          list.innerHTML = "";
+          if (convos.length === 0) {
+            list.innerHTML = '<div class="empty-state">Belum ada riwayat chat</div>';
+            return;
+          }
+          convos.forEach((convo) => {
+            const item = document.createElement("div");
+            item.className = "convo-item";
+            item.onclick = () => selectConversation(convo);
+            const name = convo.character?.name || "Unknown";
+            const preview = (convo.last_text_message?.content || "No messages").substring(0, 60) + "...";
+            item.innerHTML = `<div class="convo-name">${name}</div><div class="convo-preview">${preview}</div>`;
+            list.appendChild(item);
+          });
+        } catch (err) {
+          console.error("Error:", err);
+        }
+      }
+
+      async function loadCharacters(search = "") {
+        const grid = document.getElementById("characterGrid");
+        grid.innerHTML = '<div class="loading">Memuat karakter...</div>';
+
+        try {
+          const isNsfw = document.getElementById("nsfwToggle").checked;
+          const url = `/api/characters?search=${encodeURIComponent(search || "*")}&is_nsfw=${isNsfw}&per_page=48`;
+          const response = await fetch(url);
+          const data = await response.json();
+          const characters = data.characters || [];
+
+          if (characters.length === 0) {
+            grid.innerHTML = '<div class="empty-state">Tidak ada karakter ditemukan</div>';
+            return;
+          }
+
+          grid.innerHTML = "";
+          characters.forEach((char) => {
+            const card = document.createElement("div");
+            card.className = "character-card";
+            card.onclick = () => startNewChat(char);
+
+            // FIX AVATAR: Cek apakah URL sudah absolut, jika tidak, prepend domain spicychat
+            let avatarSrc = char.avatar_url || "";
+            if (avatarSrc && !avatarSrc.startsWith("http")) {
+              avatarSrc = "https://spicychat.ai/" + avatarSrc;
+            }
+
+            const avatarHtml = avatarSrc
+              ? `<img src="${avatarSrc}" alt="${char.name}" onerror="this.style.display='none'; this.parentNode.innerText='🤖'">`
+              : "🤖";
+
+            card.innerHTML = `
+                        <div class="character-avatar">${avatarHtml}</div>
+                        <div class="character-name">${char.name}</div>
+                        <div class="character-title">${char.title || ""}</div>
+                    `;
+            grid.appendChild(card);
+          });
+        } catch (err) {
+          console.error("Error loading characters:", err);
+          grid.innerHTML = '<div class="empty-state">Error memuat karakter</div>';
+        }
+      }
+
+      function searchCharacters() {
+        clearTimeout(searchTimeout);
+        const search = document.getElementById("searchInput").value;
+        searchTimeout = setTimeout(() => loadCharacters(search), 500);
+      }
+
+      async function loadModels() {
+        try {
+          const response = await fetch("/api/models");
+          models = await response.json();
+          const select = document.getElementById("modelSelect");
+          select.innerHTML = "";
+          models.forEach((model) => {
+            const option = document.createElement("option");
+            option.value = model.id;
+            option.textContent = `${model.name} (${model.size}) - ${model.level || "Free"}`;
+            select.appendChild(option);
+          });
+        } catch (err) {
+          console.error("Error:", err);
+        }
+      }
+
+      function selectConversation(convo) {
+        currentConvo = convo;
+        document.getElementById("chatHeader").style.display = "flex";
+        document.getElementById("inputContainer").style.display = "flex";
+        document.getElementById("charName").textContent = convo.character?.name || "Unknown";
+        document.querySelectorAll(".convo-item").forEach((item) => item.classList.remove("active"));
+        event.target.closest(".convo-item").classList.add("active");
+        document.getElementById("messages").innerHTML =
+          `<div class="empty-state">Mulai chat dengan ${convo.character?.name || "bot"}</div>`;
+        if (window.innerWidth <= 768) toggleSidebar();
+      }
+
+      function startNewChat(character) {
+        currentConvo = { id: "new-" + Date.now(), character_id: character.id, character: character };
+        document.getElementById("chatHeader").style.display = "flex";
+        document.getElementById("inputContainer").style.display = "flex";
+        document.getElementById("charName").textContent = character.name;
+        document.getElementById("messages").innerHTML =
+          `<div class="empty-state">Mulai chat baru dengan ${character.name}</div>`;
+        if (window.innerWidth <= 768) toggleSidebar();
+      }
+
+      async function sendMessage() {
+        if (!currentConvo) return;
+        const input = document.getElementById("messageInput");
+        const message = input.value.trim();
+        if (!message) return;
+
+        const sendBtn = document.getElementById("sendBtn");
+        sendBtn.disabled = true;
+        input.value = "";
+
+        const messages = document.getElementById("messages");
+        messages.innerHTML += `<div class="message user">${formatMessage(message)}</div>`;
+        messages.innerHTML += `<div class="message bot" id="loadingMsg"><em>Bot sedang mengetik...</em></div>`;
+        messages.scrollTop = messages.scrollHeight;
+
+        try {
+          const response = await fetch("/api/chat", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              message,
+              character_id: currentConvo.character_id,
+              conversation_id: currentConvo.id,
+            }),
+          });
+          const data = await response.json();
+          document.getElementById("loadingMsg").remove();
+          messages.innerHTML += `<div class="message bot">${formatMessage(data.content)}</div>`;
+          messages.scrollTop = messages.scrollHeight;
+        } catch (err) {
+          document.getElementById("loadingMsg").innerHTML =
+            `<strong style="color: red;">Error:</strong> ${err.message}`;
+        }
+        sendBtn.disabled = false;
+        input.focus();
+      }
+
+      document.getElementById("messageInput").addEventListener("keypress", (e) => {
+        if (e.key === "Enter") sendMessage();
+      });
+
+      async function openSettings() {
+        document.getElementById("settingsModal").classList.add("active");
+        const settings = await (await fetch("/api/settings")).json();
+        document.getElementById("modelSelect").value = settings.model_id;
+        document.getElementById("tempSlider").value = settings.temperature;
+        document.getElementById("tempValue").textContent = settings.temperature;
+        document.getElementById("tokensSlider").value = settings.max_tokens;
+        document.getElementById("tokensValue").textContent = settings.max_tokens;
+        document.getElementById("topPSlider").value = settings.top_p;
+        document.getElementById("topPValue").textContent = settings.top_p;
+      }
+
+      function closeSettings() {
+        document.getElementById("settingsModal").classList.remove("active");
+      }
+
+      async function saveSettings() {
+        await fetch("/api/settings", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model_id: document.getElementById("modelSelect").value,
+            temperature: parseFloat(document.getElementById("tempSlider").value),
+            max_tokens: parseInt(document.getElementById("tokensSlider").value),
+            top_p: parseFloat(document.getElementById("topPSlider").value),
+          }),
+        });
+        closeSettings();
+      }
+
+      function logout() {
+        if (confirm("Yakin mau logout?")) {
+          localStorage.removeItem("spicychat_refresh_token");
+          window.location.href = "/logout";
+        }
+      }
+
+      loadConversations();
+      loadModels();
+    </script>
+  </body>
+</html>
