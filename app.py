@@ -188,6 +188,22 @@ def get_conversations(access_token):
 
 
 
+def get_conversation_messages(access_token, character_id, conversation_id, limit=50):
+    character_id = urllib.parse.quote(str(character_id), safe="")
+    conversation_id = urllib.parse.quote(str(conversation_id), safe="")
+    limit = max(1, min(int(limit), 100))
+    url = (
+        f"https://prod.nd-api.com/characters/{character_id}/messages/"
+        f"{conversation_id}?limit={limit}"
+    )
+    headers = api_headers(access_token)
+    headers["Origin"] = "https://spicychat.ai"
+    req = urllib.request.Request(url, headers=headers)
+    with urllib.request.urlopen(req, timeout=30) as response:
+        return json.loads(response.read().decode("utf-8"))
+
+
+
 def clean_tag(tag):
     return str(tag).replace("`", "").replace(",", " ").strip()
 
@@ -379,6 +395,37 @@ def api_conversations():
         return auth_error
     try:
         return jsonify(get_conversations(session["access_token"]))
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
+
+@app.route("/api/conversations/<conversation_id>/messages")
+def api_conversation_messages(conversation_id):
+    auth_error = require_api_auth()
+    if auth_error:
+        return auth_error
+
+    character_id = str(request.args.get("character_id") or "").strip()
+    if not character_id:
+        return jsonify({"error": "character_id wajib diisi"}), 400
+
+    try:
+        limit = max(1, min(int(request.args.get("limit", 50)), 100))
+    except (TypeError, ValueError):
+        limit = 50
+
+    try:
+        return jsonify(get_conversation_messages(
+            session["access_token"],
+            character_id,
+            conversation_id,
+            limit,
+        ))
+    except urllib.error.HTTPError as exc:
+        return jsonify({"error": f"SpicyChat API HTTP {exc.code}: {parse_upstream_error(exc)}"}), 502
+    except urllib.error.URLError as exc:
+        return jsonify({"error": f"Gagal menghubungi SpicyChat API: {exc.reason}"}), 502
     except Exception as exc:
         return jsonify({"error": str(exc)}), 500
 
