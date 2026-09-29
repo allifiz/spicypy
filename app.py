@@ -323,15 +323,77 @@ def get_discovery_filters(access_token):
     }
 
 
-def build_upstream_message(message, settings):
-    if not settings.get("force_indonesian", True):
-        return message
-    return f"{INDONESIAN_DIRECTOR_COMMAND}\n\n[USER MESSAGE]\n{message}"
+def build_upstream_message(
+    message,
+    settings,
+    character_notes="",
+    memory=None,
+    quick_command="",
+    regenerate=False,
+):
+    memory = memory if isinstance(memory, dict) else {}
+    sections = []
+
+    if settings.get("force_indonesian", True):
+        sections.append(INDONESIAN_DIRECTOR_COMMAND)
+
+    character_notes = str(character_notes or "").strip()
+    if character_notes:
+        sections.append(
+            "[CHARACTER NOTES - PERSISTENT USER INSTRUCTIONS]\n"
+            + character_notes[:4000]
+        )
+
+    short_term = str(memory.get("short_term") or "").strip()
+    scene_summary = str(memory.get("scene_summary") or "").strip()
+    long_term = str(memory.get("long_term") or "").strip()
+
+    if long_term:
+        sections.append("[LONG TERM MEMORY]\n" + long_term[:6000])
+    if scene_summary:
+        sections.append("[PAST SCENE MEMORY]\n" + scene_summary[:6000])
+    if short_term:
+        sections.append("[CURRENT SCENE / SHORT TERM MEMORY]\n" + short_term[:4000])
+
+    quick_command = str(quick_command or "").strip()
+    if quick_command:
+        sections.append(
+            "[ONE-SHOT QUICK COMMAND - APPLY ONLY TO THIS RESPONSE]\n"
+            + quick_command[:1500]
+        )
+
+    if regenerate:
+        sections.append(
+            "[REGENERATION REQUEST]\n"
+            "Generate a fresh alternative to your immediately previous reply. "
+            "Keep the established facts, scene state, character identity, and continuity. "
+            "Do not mention that this is a regeneration."
+        )
+
+    sections.append("[USER MESSAGE]\n" + str(message or "").strip())
+    return "\n\n".join(sections)
 
 
-def send_message_api(message, access_token, char_id, conv_id, settings):
+def send_message_api(
+    message,
+    access_token,
+    char_id,
+    conv_id,
+    settings,
+    character_notes="",
+    memory=None,
+    quick_command="",
+    regenerate=False,
+):
     payload = {
-        "message": build_upstream_message(message, settings),
+        "message": build_upstream_message(
+            message,
+            settings,
+            character_notes=character_notes,
+            memory=memory,
+            quick_command=quick_command,
+            regenerate=regenerate,
+        ),
         "character_id": char_id,
         "model_id": settings.get("model_id", DEFAULT_SETTINGS["model_id"]),
         "temperature": settings.get("temperature", DEFAULT_SETTINGS["temperature"]),
@@ -604,6 +666,10 @@ def api_chat():
             character_id,
             conversation_id,
             session.get("settings", DEFAULT_SETTINGS.copy()),
+            character_notes=data.get("character_notes", ""),
+            memory=data.get("memory") if isinstance(data.get("memory"), dict) else {},
+            quick_command=data.get("quick_command", ""),
+            regenerate=bool(data.get("regenerate")),
         )
         message_obj = upstream.get("message") if isinstance(upstream, dict) else None
         content = message_obj.get("content") if isinstance(message_obj, dict) else None
