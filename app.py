@@ -435,8 +435,66 @@ def send_message_api(
         headers=headers,
         method="POST",
     )
+    print(
+        "[SpicyPy][chat-outgoing]",
+        json.dumps(
+            {
+                "character_id": char_id,
+                "conversation_id": conv_id,
+                "model_id": payload.get("model_id"),
+                "temperature": payload.get("temperature"),
+                "max_tokens": payload.get("max_tokens"),
+                "top_p": payload.get("top_p"),
+            },
+            ensure_ascii=False,
+        ),
+        flush=True,
+    )
+
     with urllib.request.urlopen(req, timeout=90) as response:
-        return json.loads(response.read().decode("utf-8"))
+        upstream = json.loads(response.read().decode("utf-8"))
+        debug_meta = {}
+        if isinstance(upstream, dict):
+            for key in (
+                "model_id",
+                "model",
+                "temperature",
+                "max_tokens",
+                "top_p",
+                "finish_reason",
+                "usage",
+            ):
+                if key in upstream:
+                    debug_meta[key] = upstream.get(key)
+
+            message_meta = upstream.get("message")
+            if isinstance(message_meta, dict):
+                for key in (
+                    "model_id",
+                    "model",
+                    "temperature",
+                    "max_tokens",
+                    "top_p",
+                    "finish_reason",
+                ):
+                    if key in message_meta and key not in debug_meta:
+                        debug_meta[key] = message_meta.get(key)
+
+        print(
+            "[SpicyPy][chat-upstream-meta]",
+            json.dumps(debug_meta, ensure_ascii=False),
+            flush=True,
+        )
+
+        return upstream, {
+            "sent": {
+                "model_id": payload.get("model_id"),
+                "temperature": payload.get("temperature"),
+                "max_tokens": payload.get("max_tokens"),
+                "top_p": payload.get("top_p"),
+            },
+            "upstream": debug_meta,
+        }
 
 
 def parse_upstream_error(exc):
@@ -684,7 +742,7 @@ def api_chat():
         return jsonify({"error": "Missing message atau character_id"}), 400
 
     try:
-        upstream = send_message_api(
+        upstream, debug = send_message_api(
             message,
             session["access_token"],
             character_id,
@@ -710,7 +768,11 @@ def api_chat():
 
         if not content:
             return jsonify({"error": "SpicyChat API tidak mengembalikan isi balasan"}), 502
-        return jsonify({"content": content, "conversation_id": returned_id})
+        return jsonify({
+            "content": content,
+            "conversation_id": returned_id,
+            "debug": debug,
+        })
     except urllib.error.HTTPError as exc:
         return jsonify({"error": f"SpicyChat API HTTP {exc.code}: {parse_upstream_error(exc)}"}), 502
     except urllib.error.URLError as exc:
