@@ -17,7 +17,7 @@ app.config.update(
 AUTH_URL = "https://auth.spicychat.ai/oauth2/token"
 CONVO_URL = "https://prod.nd-api.com/v2/conversations?limit=25&sort=latest"
 TYPESENSE_URL = "https://ts-lb.nd-api.com/multi_search?use_cache=true&x-typesense-api-key=STHKtT6jrC5z1IozTJHIeSN4qN9oL1s3"
-CHAT_URL = "https://chat.nd-api.com/chat"
+CHAT_URL = "https://prod.nd-api.com/chat"
 APP_CONFIG_URL = "https://prod.nd-api.com/v2/applications/spicychat"
 CLIENT_ID = "fb5754f42ee84f4787f9bd8ff49cac7a"
 AVATAR_CDN_BASE = "https://cdn.nd-api.com/"
@@ -27,6 +27,7 @@ DEFAULT_SETTINGS = {
     "temperature": 1.25,
     "max_tokens": 700,
     "top_p": 0.95,
+    "top_k": 90,
     "force_indonesian": True,
 }
 
@@ -410,6 +411,18 @@ def send_message_api(
     regenerate=False,
 ):
     payload = {
+        "conversation_id": conv_id,
+        "character_id": char_id,
+        "language": "id" if settings.get("force_indonesian", True) else "en",
+        "inference_model": settings.get("model_id", DEFAULT_SETTINGS["model_id"]),
+        "inference_settings": {
+            "max_new_tokens": settings.get("max_tokens", DEFAULT_SETTINGS["max_tokens"]),
+            "temperature": settings.get("temperature", DEFAULT_SETTINGS["temperature"]),
+            "top_p": settings.get("top_p", DEFAULT_SETTINGS["top_p"]),
+            "top_k": settings.get("top_k", DEFAULT_SETTINGS["top_k"]),
+        },
+        "autopilot": False,
+        "continue_chat": False,
         "message": build_upstream_message(
             message,
             settings,
@@ -418,14 +431,7 @@ def send_message_api(
             quick_command=quick_command,
             regenerate=regenerate,
         ),
-        "character_id": char_id,
-        "model_id": settings.get("model_id", DEFAULT_SETTINGS["model_id"]),
-        "temperature": settings.get("temperature", DEFAULT_SETTINGS["temperature"]),
-        "max_tokens": settings.get("max_tokens", DEFAULT_SETTINGS["max_tokens"]),
-        "top_p": settings.get("top_p", DEFAULT_SETTINGS["top_p"]),
     }
-    if conv_id:
-        payload["conversation_id"] = conv_id
 
     headers = api_headers(access_token)
     headers["Content-Type"] = "application/json"
@@ -441,10 +447,8 @@ def send_message_api(
             {
                 "character_id": char_id,
                 "conversation_id": conv_id,
-                "model_id": payload.get("model_id"),
-                "temperature": payload.get("temperature"),
-                "max_tokens": payload.get("max_tokens"),
-                "top_p": payload.get("top_p"),
+                "inference_model": payload.get("inference_model"),
+                "inference_settings": payload.get("inference_settings"),
             },
             ensure_ascii=False,
         ),
@@ -456,11 +460,15 @@ def send_message_api(
         debug_meta = {}
         if isinstance(upstream, dict):
             for key in (
+                "engine",
                 "model_id",
                 "model",
+                "inference_model",
                 "temperature",
                 "max_tokens",
+                "max_new_tokens",
                 "top_p",
+                "top_k",
                 "finish_reason",
                 "usage",
             ):
@@ -470,11 +478,15 @@ def send_message_api(
             message_meta = upstream.get("message")
             if isinstance(message_meta, dict):
                 for key in (
+                    "engine",
                     "model_id",
                     "model",
+                    "inference_model",
                     "temperature",
                     "max_tokens",
+                    "max_new_tokens",
                     "top_p",
+                    "top_k",
                     "finish_reason",
                 ):
                     if key in message_meta and key not in debug_meta:
@@ -488,10 +500,11 @@ def send_message_api(
 
         return upstream, {
             "sent": {
-                "model_id": payload.get("model_id"),
-                "temperature": payload.get("temperature"),
-                "max_tokens": payload.get("max_tokens"),
-                "top_p": payload.get("top_p"),
+                "inference_model": payload.get("inference_model"),
+                "inference_settings": payload.get("inference_settings"),
+                "language": payload.get("language"),
+                "autopilot": payload.get("autopilot"),
+                "continue_chat": payload.get("continue_chat"),
             },
             "upstream": debug_meta,
         }
