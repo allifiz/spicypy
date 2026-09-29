@@ -370,7 +370,14 @@ def build_upstream_message(
             "Do not mention that this is a regeneration."
         )
 
-    sections.append("[USER MESSAGE]\n" + str(message or "").strip())
+    if regenerate:
+        sections.append(
+            "[SPICYPY REGENERATE]\n"
+            "Original user message for context:\n"
+            + str(message or "").strip()
+        )
+    else:
+        sections.append("[USER MESSAGE]\n" + str(message or "").strip())
     return "\n\n".join(sections)
 
 
