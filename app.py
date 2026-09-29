@@ -59,6 +59,21 @@ INDONESIAN_DIRECTOR_COMMAND = (
 )
 
 
+GLOBAL_RESPONSE_STYLE = (
+    "[GLOBAL RESPONSE STYLE] "
+    "Use dialogue-driven roleplay by default. "
+    "Aim for approximately 70-80 percent spoken dialogue and 20-30 percent narration. "
+    "Every conversational reply should contain meaningful spoken dialogue from the character. "
+    "For greetings, direct questions, short reactions, and casual conversation, answer through the character's spoken words first. "
+    "Do not turn simple conversational exchanges into long descriptive scenes. "
+    "Keep narration concise and use it mainly for expressions, gestures, movement, and scene context. "
+    "Avoid long descriptive paragraphs unless the user explicitly requests a descriptive or cinematic response. "
+    "Prefer several natural spoken lines separated by short supporting narration rather than one tiny dialogue line after a large narration block. "
+    "Never write dialogue, thoughts, decisions, or actions for the user character. "
+    "If a one-shot quick command specifies a different response style or dialogue ratio, that quick command temporarily overrides this default style for that response only."
+)
+
+
 def private_password():
     return str(os.environ.get("PRIVATE_APP_PASSWORD") or "").strip()
 
@@ -336,6 +351,8 @@ def build_upstream_message(
 
     if settings.get("force_indonesian", True):
         sections.append(INDONESIAN_DIRECTOR_COMMAND)
+
+    sections.append(GLOBAL_RESPONSE_STYLE)
 
     character_notes = str(character_notes or "").strip()
     if character_notes:
