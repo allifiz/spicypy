@@ -343,11 +343,9 @@ def build_upstream_message(
     message,
     settings,
     character_notes="",
-    memory=None,
     quick_command="",
     regenerate=False,
 ):
-    memory = memory if isinstance(memory, dict) else {}
     sections = []
 
     if settings.get("force_indonesian", True):
@@ -361,17 +359,6 @@ def build_upstream_message(
             "[CHARACTER NOTES - PERSISTENT USER INSTRUCTIONS]\n"
             + character_notes[:4000]
         )
-
-    short_term = str(memory.get("short_term") or "").strip()
-    scene_summary = str(memory.get("scene_summary") or "").strip()
-    long_term = str(memory.get("long_term") or "").strip()
-
-    if long_term:
-        sections.append("[LONG TERM MEMORY]\n" + long_term[:6000])
-    if scene_summary:
-        sections.append("[PAST SCENE MEMORY]\n" + scene_summary[:6000])
-    if short_term:
-        sections.append("[CURRENT SCENE / SHORT TERM MEMORY]\n" + short_term[:4000])
 
     quick_command = str(quick_command or "").strip()
     if quick_command:
@@ -406,7 +393,6 @@ def send_message_api(
     conv_id,
     settings,
     character_notes="",
-    memory=None,
     quick_command="",
     regenerate=False,
 ):
@@ -427,7 +413,6 @@ def send_message_api(
             message,
             settings,
             character_notes=character_notes,
-            memory=memory,
             quick_command=quick_command,
             regenerate=regenerate,
         ),
@@ -762,7 +747,6 @@ def api_chat():
             conversation_id,
             session.get("settings", DEFAULT_SETTINGS.copy()),
             character_notes=data.get("character_notes", ""),
-            memory=data.get("memory") if isinstance(data.get("memory"), dict) else {},
             quick_command=data.get("quick_command", ""),
             regenerate=bool(data.get("regenerate")),
         )
