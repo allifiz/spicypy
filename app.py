@@ -5,9 +5,41 @@ import urllib.parse
 import secrets
 import json
 import os
+import base64
+import hashlib
+import time
+from datetime import timedelta
+from cryptography.fernet import Fernet, InvalidToken
+from flask.sessions import SecureCookieSessionInterface
+from itsdangerous import BadSignature
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("SECRET_KEY", "spicypy-dev-secret-change-me")
+# A configured key must be stable across workers and deployments.
+app.secret_key = os.environ.get("SECRET_KEY") or secrets.token_hex(32)
+app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=30)
+
+
+class EncryptedSessionSerializer:
+    def __init__(self, secret):
+        key = hashlib.sha256(("spicypy-session-v1:" + secret).encode()).digest()
+        self.cipher = Fernet(base64.urlsafe_b64encode(key))
+
+    def dumps(self, value):
+        return self.cipher.encrypt(json.dumps(value, separators=(",", ":")).encode()).decode()
+
+    def loads(self, value, max_age=None):
+        try:
+            return json.loads(self.cipher.decrypt(value.encode(), ttl=max_age))
+        except (InvalidToken, ValueError, TypeError) as exc:
+            raise BadSignature("Invalid encrypted session") from exc
+
+
+class EncryptedSessionInterface(SecureCookieSessionInterface):
+    def get_signing_serializer(self, app):
+        return EncryptedSessionSerializer(app.secret_key)
+
+
+app.session_interface = EncryptedSessionInterface()
 app.config.update(
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE="Lax",
@@ -75,40 +107,25 @@ GLOBAL_RESPONSE_STYLE = (
 )
 
 
-def private_password():
-    return str(os.environ.get("PRIVATE_APP_PASSWORD") or "").strip()
-
-
-def is_private_route_exempt():
-    return (
-        request.path in {"/private-login", "/robots.txt", "/manifest.webmanifest", "/service-worker.js"}
-        or request.path.startswith("/static/")
-    )
-
-
 def safe_next_url(value):
     value = str(value or "").strip()
-    if value.startswith("/") and not value.startswith("//"):
+    if (value.startswith("/") and not value.startswith("//")
+            and "\\" not in value and not any(ord(c) < 32 for c in value)):
         return value
     return "/"
 
 
 @app.before_request
 def private_access_gate():
-    if is_private_route_exempt():
+    if (request.path in {"/login", "/private-login", "/logout", "/robots.txt",
+                         "/manifest.webmanifest", "/service-worker.js"}
+            or request.path.startswith("/static/")):
         return None
-
-    if not private_password():
+    if not ensure_spicy_session():
         if request.path.startswith("/api/"):
-            return jsonify({"error": "PRIVATE_APP_PASSWORD belum dikonfigurasi"}), 503
-        return render_template("login.html", setup_missing=True), 503
-
-    if not session.get("private_access"):
-        if request.path.startswith("/api/"):
-            return jsonify({"error": "Private access required"}), 401
+            return jsonify({"error": "Sesi berakhir. Masuk kembali dengan refresh token."}), 401
         next_url = urllib.parse.quote(request.full_path.rstrip("?"), safe="/")
-        return redirect(f"/private-login?next={next_url}")
-
+        return redirect(f"/login?next={next_url}")
     return None
 
 
@@ -116,6 +133,7 @@ def private_access_gate():
 def private_response_headers(response):
     response.headers["X-Robots-Tag"] = "noindex, nofollow, noarchive, nosnippet"
     response.headers["Referrer-Policy"] = "same-origin"
+    response.headers["Cache-Control"] = "no-store"
     return response
 
 
@@ -133,7 +151,7 @@ def api_headers(access_token=None):
     return headers
 
 
-def get_access_token(refresh_token):
+def exchange_refresh_token(refresh_token):
     body = urllib.parse.urlencode({
         "refresh_token": refresh_token,
         "grant_type": "refresh_token",
@@ -155,36 +173,43 @@ def get_access_token(refresh_token):
         access_token = payload.get("access_token")
         if not access_token:
             raise RuntimeError("SpicyChat tidak mengembalikan access_token")
-        return access_token
+        return payload
+
+
+def save_spicy_tokens(payload, refresh_token):
+    # Preserve rotated refresh tokens returned by the provider.
+    session["access_token"] = payload["access_token"]
+    session["refresh_token"] = payload.get("refresh_token") or refresh_token
+    session["expires_at"] = time.time() + max(0, int(payload.get("expires_in", 3600)) - 60)
+    session.setdefault("settings", DEFAULT_SETTINGS.copy())
+    session.permanent = True
+    # Leave room for cookie attributes; never silently emit an unusable cookie.
+    if len(app.session_interface.get_signing_serializer(app).dumps(dict(session))) > 3800:
+        session.clear()
+        raise ValueError("Sesi terlalu besar untuk disimpan dengan aman di browser.")
 
 
 def ensure_spicy_session():
-    if session.get("access_token"):
+    if session.get("access_token") and session.get("expires_at", 0) > time.time():
         return True
-
-    refresh_token = str(os.environ.get("SPICYCHAT_REFRESH_TOKEN") or "").strip()
+    refresh_token = session.get("refresh_token")
     if not refresh_token:
-        session["auth_error"] = "SPICYCHAT_REFRESH_TOKEN belum dikonfigurasi"
         return False
-
     try:
-        session["access_token"] = get_access_token(refresh_token)
-        session.setdefault("settings", DEFAULT_SETTINGS.copy())
-        session.pop("auth_error", None)
+        save_spicy_tokens(exchange_refresh_token(refresh_token), refresh_token)
         return True
-    except Exception as exc:
-        session.pop("access_token", None)
-        session["auth_error"] = str(exc)
+    except urllib.error.HTTPError as exc:
+        if exc.code in {400, 401, 403}:
+            session.clear()
+        return False
+    except (urllib.error.URLError, TimeoutError, ValueError, RuntimeError):
         return False
 
 
 def require_api_auth():
     if ensure_spicy_session():
         return None
-    return jsonify({
-        "error": session.get("auth_error")
-        or "SPICYCHAT_REFRESH_TOKEN belum dikonfigurasi atau tidak valid"
-    }), 401
+    return jsonify({"error": "Sesi berakhir. Masuk kembali dengan refresh token."}), 401
 
 
 def get_conversations(access_token):
@@ -507,34 +532,47 @@ def parse_upstream_error(exc):
 
 
 def page(template):
-    if not ensure_spicy_session():
-        return render_template(
-            "login.html",
-            spicy_error=session.get("auth_error"),
-            private_unlocked=True,
-        )
     return render_template(template)
 
 
 @app.route("/private-login", methods=["GET", "POST"])
 def private_login():
-    if not private_password():
-        return render_template("login.html", setup_missing=True), 503
+    return redirect("/login")
 
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
     next_url = safe_next_url(request.args.get("next") or request.form.get("next"))
-    if session.get("private_access"):
-        return redirect(next_url)
-
+    if os.environ.get("VERCEL") and not os.environ.get("SECRET_KEY"):
+        return render_template("login.html", setup_missing=True), 503
     error = None
     if request.method == "POST":
-        candidate = str(request.form.get("password") or "")
-        if secrets.compare_digest(candidate, private_password()):
-            session.clear()
-            session["private_access"] = True
-            return redirect(next_url)
-        error = "Password salah."
-
-    return render_template("login.html", access_error=error, next_url=next_url)
+        csrf = request.form.get("csrf_token", "")
+        if not csrf or not secrets.compare_digest(csrf.encode(), session.get("login_csrf", "").encode()):
+            error = "Form kedaluwarsa. Silakan coba lagi."
+        else:
+            refresh_token = str(request.form.get("refresh_token") or "").strip()
+            if not refresh_token or len(refresh_token) > 8192 or any(c.isspace() for c in refresh_token):
+                error = "Tempel refresh token saja, tanpa spasi atau awalan Bearer."
+            else:
+                try:
+                    payload = exchange_refresh_token(refresh_token)
+                    session.clear()
+                    save_spicy_tokens(payload, refresh_token)
+                    return redirect(next_url)
+                except urllib.error.HTTPError as exc:
+                    error = ("Refresh token tidak valid atau sudah kedaluwarsa."
+                             if exc.code in {400, 401, 403} else
+                             "SpicyChat sedang bermasalah. Coba lagi nanti.")
+                except (urllib.error.URLError, TimeoutError):
+                    error = "Tidak dapat menghubungi SpicyChat. Coba lagi nanti."
+                except Exception:
+                    error = "Sesi SpicyChat tidak dapat dibuat. Coba token lain atau hubungi pengelola."
+    elif session.get("refresh_token") and ensure_spicy_session():
+        return redirect(next_url)
+    session["login_csrf"] = secrets.token_urlsafe(32)
+    return render_template("login.html", access_error=error, next_url=next_url,
+                           csrf_token=session["login_csrf"])
 
 
 @app.route("/")
@@ -781,7 +819,7 @@ def api_chat():
 @app.route("/logout")
 def logout():
     session.clear()
-    return redirect("/private-login")
+    return redirect("/login")
 
 
 if __name__ == "__main__":

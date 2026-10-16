@@ -1,4 +1,4 @@
-const CACHE='spicypy-v3';
+const CACHE='spicypy-v4';
 const STATIC=['/manifest.webmanifest','/static/icon.svg'];
 
 self.addEventListener('install',event=>{
@@ -16,7 +16,7 @@ self.addEventListener('fetch',event=>{
   if(req.method!=='GET') return;
 
   const url=new URL(req.url);
-  if(req.mode==='navigate' || url.pathname.startsWith('/api/') || url.pathname==='/private-login' || url.pathname==='/logout'){
+  if(req.mode==='navigate' || url.pathname.startsWith('/api/') || url.pathname==='/login' || url.pathname==='/private-login' || url.pathname==='/logout'){
     event.respondWith(fetch(req));
     return;
   }
