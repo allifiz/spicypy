@@ -570,7 +570,7 @@ def login():
                     error = "Sesi SpicyChat tidak dapat dibuat. Coba token lain atau hubungi pengelola."
     elif session.get("refresh_token") and ensure_spicy_session():
         return redirect(next_url)
-    session["login_csrf"] = secrets.token_urlsafe(32)
+    session.setdefault("login_csrf", secrets.token_urlsafe(32))
     return render_template("login.html", access_error=error, next_url=next_url,
                            csrf_token=session["login_csrf"])
 

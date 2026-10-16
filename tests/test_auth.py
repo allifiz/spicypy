@@ -28,6 +28,19 @@ class LoginTests(unittest.TestCase):
             exchange.assert_not_called()
 
     @patch('app.exchange_refresh_token')
+    def test_opening_another_login_page_keeps_existing_form_valid(self, exchange):
+        self.client.get('/login')
+        with self.client.session_transaction() as session:
+            first_csrf = session['login_csrf']
+        self.client.get('/login')
+        exchange.return_value = {'access_token': 'valid-access', 'expires_in': 3600}
+        response = self.client.post('/login', data={
+            'csrf_token': first_csrf, 'refresh_token': 'valid-refresh',
+        })
+        self.assertEqual(response.status_code, 302)
+        exchange.assert_called_once_with('valid-refresh')
+
+    @patch('app.exchange_refresh_token')
     def test_login_encrypted_cookie_and_isolation(self, exchange):
         exchange.return_value = {'access_token': 'access-test', 'refresh_token': 'rotated-test', 'expires_in': 3600}
         response = self.login(token='  refresh-test  ')
